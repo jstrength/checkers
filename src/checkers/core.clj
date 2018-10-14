@@ -1,6 +1,8 @@
 (ns checkers.core
   (:require [quil.core :as q]
-            [quil.middleware :as m]))
+            [quil.middleware :as m]
+            [clojure.core.async :as async]
+            [checkers.server :as server]))
 
 (def screen-size 500)
 (def margin 50)
@@ -13,6 +15,10 @@
 (def RED 2)
 (def BLACK_KING 3)
 (def RED_KING 4)
+
+
+(def read-ch (async/chan))
+(def write-ch (async/chan))
 
 (def position-coordinates
   (vec (for [y (range 8)
@@ -29,8 +35,23 @@
                            (> n (- 63 (* 3 8))) RED
                            :else EMPTY)
                      EMPTY))))
+   :multiplayer false
    :turn :red
    :state :in-progress})
+
+(defn notify-opponent [square release-square {:keys [multiplayer] :as state}]
+  (when multiplayer
+    (async/put! write-ch (str "move:" square "-" release-square)))
+  state)
+
+(defn read-opponent-msg [{:keys [multiplayer player turn] :as state}]
+  (when (and multiplayer (not= player turn))
+    ;(println player "take!")
+    (when-let [msg (async/poll! read-ch)]
+      (println "msg:" msg)
+      (let [[_ from to] (re-find #"move:(\d+)-(\d+)" msg)]
+        (println [from to])
+        [(Integer/parseInt from) (Integer/parseInt to)]))))
 
 (defn find-jumped-square [s e]
   (when (> (Math/abs ^Integer (- s e)) 9)
@@ -131,26 +152,36 @@
        (remove nil?)
        (seq)))
 
-(defn is-playable-piece? [board turn pos]
-  (or
-    (get-valid-jumps board pos) ;;our piece has valid jumps
-    (and
-      ;;there isn't another jumpable piece
-      (not (seq (reduce (fn [c p]
-                          (if (= turn (if (#{BLACK BLACK_KING} (get board p)) :black :red))
-                            (into c (get-valid-jumps board p))
-                            c))
-                        [] (range 64))))
-      (get-valid-moves board pos)) ;; this piece can move
-    ))
+(defn is-playable-piece? [{:keys [board turn player multiplayer] :as state} pos]
+  (and (if multiplayer (= turn player) true)
+       (or
+         (get-valid-jumps board pos) ;;our piece has valid jumps
+         (and
+           ;;there isn't another jumpable piece
+           (not (seq (reduce (fn [c p]
+                               (if (= turn (if (#{BLACK BLACK_KING} (get board p)) :black :red))
+                                 (into c (get-valid-jumps board p))
+                                 c))
+                             [] (range 64))))
+           (get-valid-moves board pos)) ;; this piece can move
+         )))
 
-(defn setup []
+(defn setup [args]
   ; Set frame rate to 30 frames per second.
   (q/frame-rate 30)
   (q/text-size 30)
   ; setup function returns initial state. It contains
   ; circle color and position.
-  starting-state)
+  (case (first args)
+    "server" (do (server/server-channel 1337 read-ch write-ch)
+                 ;todo add side picker to UI
+                 (assoc starting-state :player :red
+                                       :multiplayer true)
+                 )
+    "client" (do (server/client-channel 1337 read-ch write-ch)
+                 (assoc starting-state :player :black
+                                       :multiplayer true))
+    starting-state))
 
 (defn mouse-pressed [{:keys [turn board jumping-piece] :as state} {:keys [x y] :as event}]
   (if (and (> (- screen-size margin) x margin)
@@ -161,7 +192,7 @@
       ;(println square)
       (if (and (if jumping-piece (= square jumping-piece) true)
                (= turn (if (#{BLACK BLACK_KING} (get board square)) :black :red))
-               (is-playable-piece? board turn square))
+               (is-playable-piece? state square))
         (-> state
             ;(assoc-in [:board square] EMPTY)
             (assoc :selected {:piece (get board square) :square square :x x :y y}))
@@ -209,7 +240,8 @@
                           (not (seq (filter #{RED RED_KING} (:board s))))
                           :black-wins
                           :else
-                          :in-progress)))))
+                          :in-progress))))
+            ((partial notify-opponent square release-square)))
         ;; reset piece to original square
         (-> state
             ;(assoc-in [:board square] piece)
@@ -222,8 +254,15 @@
     (update state :selected assoc :x x :y y)
     state))
 
-(defn update-state [state]
-  state)
+(defn update-state [{:keys [multiplayer turn player] :as state}]
+  (if (and multiplayer (not= turn player))
+    (if-let [[from to] (read-opponent-msg state)]
+      (-> state
+          (dissoc :waiting)
+          (assoc :turn player)
+          (update :board (fn [board] (-> board (assoc from EMPTY to (get board from))))))
+      (assoc state :waiting true))
+    (dissoc state :waiting)))
 
 (defn draw-state [{:keys [board selected turn] :as state}]
   ;board grid
@@ -234,6 +273,10 @@
   (q/text-size 20)
   (q/fill 0)
   (q/text (str "Turn: " (name turn)) 10 30)
+  (when (:player state)
+    (if (:waiting state)
+      (q/text (str "Waiting for oppoent to move") 150 30)
+      (q/text (str "Your turn") 150 30)))
   (when (not= :in-progress (:state state))
     (q/text (name (:state state)) (/ screen-size 2) 30))
   (q/text-size 30)
@@ -285,18 +328,20 @@
               nil))))
       board)))
 
+
 (defn -main [& args]
-  (q/defsketch hello-quil
-    :title "You spin my circle right round"
+  (q/defsketch checkers-quil
+    :title "Checkers"
     :size [screen-size screen-size]
     ; setup function called only once, during sketch initialization.
-    :setup setup
+    :setup (partial setup args)
     ; update-state is called on each iteration before draw-state.
     :update update-state
     :draw draw-state
     :mouse-pressed mouse-pressed
     :mouse-released mouse-released
     :mouse-dragged mouse-dragged
+    :exit-on-close true
     :features [:keep-on-top]
     ; This sketch uses functional-mode middleware.
     ; Check quil wiki for more info about middlewares and particularly
