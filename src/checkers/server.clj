@@ -5,7 +5,7 @@
            (java.nio.channels ServerSocketChannel SocketChannel)
            (java.nio ByteBuffer)))
 
-(def ^:static BUFFER_SIZE 10)
+(def ^:static BUFFER_SIZE 64)
 
 (defn byte-buffer->msg [buffer]
   (clojure.string/trim (apply str (map char (.array buffer)))))
