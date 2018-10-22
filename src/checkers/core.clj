@@ -2,6 +2,8 @@
   (:require [quil.core :as q]
             [quil.middleware :as m]
             [clojure.core.async :as async]
+            [seesaw.core :as seesaw]
+            [checkers.audio :as audio]
             [checkers.server :as server]))
 
 (def screen-size 500)
@@ -15,7 +17,6 @@
 (def RED 2)
 (def BLACK_KING 3)
 (def RED_KING 4)
-
 
 (def read-ch (async/chan))
 (def write-ch (async/chan))
@@ -37,22 +38,24 @@
                      EMPTY))))
    :multiplayer false
    :turn :red
+   :player :red
    :state :in-progress})
 
-(defn notify-opponent [{:keys [board multiplayer] :as state}]
+(defn notify-opponent [{:keys [multiplayer] :as state}]
   (when multiplayer
-    (println (apply str board))
-    (async/put! write-ch (apply str (reverse board))))
+    (println (pr-str (update state :board (comp vec reverse))))
+    (async/put! write-ch (pr-str (update state :board (comp vec reverse)) )))
   state)
 
 (defn read-opponent-msg [{:keys [multiplayer player turn] :as state}]
   (when (and multiplayer (not= player turn))
-    ;(println player "take!")
     (when-let [msg (async/poll! read-ch)]
       (println "msg:" msg)
-      (let [new-board msg]
-        (println new-board)
-        (mapv #(- (int %) 48) new-board)))))
+      (let [new-state (read-string msg)]
+        (println new-state)
+        (if (:jumping-piece new-state)
+          (assoc new-state :player player)
+          (assoc new-state :player player :turn player))))))
 
 (defn find-jumped-square [s e]
   (when (> (Math/abs ^Integer (- s e)) 9)
@@ -146,6 +149,12 @@
            (get-valid-moves board pos)) ;; this piece can move
          )))
 
+(defn on-close [e]
+  (println e)
+  (try
+    (async/go (async/>! write-ch "exit"))
+    (catch Exception _ nil)))
+
 (defn setup [args]
   ; Set frame rate to 30 frames per second.
   (q/frame-rate 30)
@@ -154,11 +163,10 @@
   ; circle color and position.
   (case (first args)
     "server" (do (server/server-channel 1337 read-ch write-ch)
-                 ;todo add side picker to UI
                  (assoc starting-state :player :red
                                        :multiplayer true)
                  )
-    "client" (do (server/client-channel 1337 read-ch write-ch)
+    "client" (do (server/client-channel (second args) 1337 read-ch write-ch)
                  (-> starting-state
                      (update :board (comp vec reverse))
                      (assoc :player :black :multiplayer true)))
@@ -201,8 +209,10 @@
             (assoc-in [:board square] EMPTY)
             (update :board (fn [board]
                              (if-let [jumped-square (find-jumped-square square release-square)]
-                               (assoc board jumped-square EMPTY)
-                               board)))
+                               (do (audio/play-sound :jump)
+                                 (assoc board jumped-square EMPTY))
+                               (do (audio/play-sound :move)
+                                 board))))
             (dissoc :selected :jumping-piece)
             ((fn [s]
                (if (and (seq (get-valid-jumps state square))
@@ -215,9 +225,15 @@
                (assoc s :state
                         (cond ;todo game is tied
                           (not (seq (filter #{BLACK BLACK_KING} (:board s))))
-                          :red-wins
+                          (do (if (= :red (:player state))
+                                (audio/play-sound :won)
+                                (audio/play-sound :lost))
+                            :red-wins)
                           (not (seq (filter #{RED RED_KING} (:board s))))
-                          :black-wins
+                          (do (if (= :black (:player state))
+                                (audio/play-sound :won)
+                                (audio/play-sound :lost))
+                              :black-wins)
                           :else
                           :in-progress))))
             notify-opponent)
@@ -233,13 +249,10 @@
     (update state :selected assoc :x x :y y)
     state))
 
-(defn update-state [{:keys [multiplayer turn player] :as state}]
+(defn update-state [{:keys [multiplayer turn player flip-board] :as state}]
   (if (and multiplayer (not= turn player))
-    (if-let [new-board (read-opponent-msg state)]
-      (-> state
-          (dissoc :waiting)
-          (assoc :turn player
-                 :board new-board))
+    (if-let [new-state (read-opponent-msg state)]
+      (dissoc new-state :waiting)
       (assoc state :waiting true))
     (dissoc state :waiting)))
 
@@ -307,7 +320,6 @@
               nil))))
       board)))
 
-
 (defn -main [& args]
   (q/defsketch checkers-quil
     :title "Checkers"
@@ -320,8 +332,8 @@
     :mouse-pressed mouse-pressed
     :mouse-released mouse-released
     :mouse-dragged mouse-dragged
-    :exit-on-close true
-    :features [:keep-on-top]
+    :on-close on-close
+    :features [:keep-on-top #_:exit-on-close]
     ; This sketch uses functional-mode middleware.
     ; Check quil wiki for more info about middlewares and particularly
     ; fun-mode.

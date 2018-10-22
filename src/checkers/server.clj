@@ -1,23 +1,24 @@
 (ns checkers.server
-  (:require [clojure.java.io :as io]
-            [clojure.core.async :as async :refer [go go-loop <! put!]])
-  (:import (java.net InetSocketAddress ConnectException)
+  (:require [clojure.core.async :as async :refer [go go-loop <! put!]])
+  (:import (java.net InetSocketAddress ConnectException StandardSocketOptions)
            (java.nio.channels ServerSocketChannel SocketChannel)
            (java.nio ByteBuffer)))
 
-(def ^:static BUFFER_SIZE 64)
+(def ^:static BUFFER_SIZE 1024)
 
 (defn byte-buffer->msg [buffer]
   (clojure.string/trim (apply str (map char (.array buffer)))))
 
 (defn msg->byte-buffer [msg]
-  (ByteBuffer/wrap (byte-array (map byte (subs (format "%10s" msg) 0 BUFFER_SIZE)))))
+  (ByteBuffer/wrap (byte-array (map byte (subs (format (str "%" BUFFER_SIZE "s") msg) 0 BUFFER_SIZE)))))
 
 (defn server-channel [port read-ch write-ch]
   (go
-    (let [server-chan (.bind (ServerSocketChannel/open) (InetSocketAddress. port))
-          _ (println "Waiting on client to connect...")
-          sock-chan (.accept server-chan)]
+    (with-open [server-chan (doto (ServerSocketChannel/open)
+                              (.setOption StandardSocketOptions/SO_REUSEADDR true)
+                              (.bind (InetSocketAddress. port)))
+                _ (println "Waiting on client to connect...")
+                sock-chan (.accept server-chan)]
       (println "Client connected!")
       (go-loop []
         (println "Server reading")
@@ -26,16 +27,20 @@
           (let [msg (byte-buffer->msg buffer)]
             (println "Server read: " msg)
             (put! read-ch msg)))
-        (recur))
+        (when (.isConnected sock-chan)
+          (recur)))
       (go-loop []
         (let [msg (<! write-ch)]
           (println "Server write: " msg)
-          (.write sock-chan (msg->byte-buffer msg)))
-        (recur)))))
+          (.write sock-chan (msg->byte-buffer msg))
+          (if (= "exit" msg)
+            (do (.close sock-chan) (.close server-chan))
+            (when (.isConnected sock-chan)
+              (recur))))))))
 
-(defn client-channel [port read-ch write-ch]
+(defn client-channel [host port read-ch write-ch]
   (try
-    (let [sock-chan (SocketChannel/open (InetSocketAddress. port))]
+    (with-open [sock-chan (SocketChannel/open (InetSocketAddress. ^String host ^Integer port))]
       (println "Connected")
       (go-loop []
         (println "Client reading")
@@ -44,12 +49,14 @@
           (let [msg (byte-buffer->msg buffer)]
             (println "Client read: " msg)
             (put! read-ch msg)))
-        (recur))
+        (when (.isConnected sock-chan)
+          (recur)))
       (go-loop []
         (let [msg (<! write-ch)]
           (println "Client write: " msg)
           (.write sock-chan (msg->byte-buffer msg)))
-        (recur)))
+        (when (.isConnected sock-chan)
+          (recur))))
     (catch ConnectException e (println "Unable to connect to" port))))
 
 (comment
