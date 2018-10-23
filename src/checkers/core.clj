@@ -4,7 +4,8 @@
             [clojure.core.async :as async]
             [seesaw.core :as seesaw]
             [checkers.audio :as audio]
-            [checkers.server :as server]))
+            [checkers.server :as server])
+  (:import (java.util Date)))
 
 (def screen-size 500)
 (def margin 50)
@@ -17,6 +18,8 @@
 (def RED 2)
 (def BLACK_KING 3)
 (def RED_KING 4)
+
+(def TURN_TIMER_LIMIT 10)
 
 (def read-ch (async/chan))
 (def write-ch (async/chan))
@@ -36,6 +39,8 @@
                            (> n (- 63 (* 3 8))) RED
                            :else EMPTY)
                      EMPTY))))
+   :start-time (.getTime (Date.))
+   :turn-timer (.getTime (Date.))
    :multiplayer false
    :turn :red
    :player :red
@@ -247,6 +252,7 @@
   (cond-> state
     true (update :actions conj {:type :check-board-state})
     true (update :turn #(if (= % :red) :black :red))
+    true (assoc :turn-timer (.getTime (Date.)))
     (not (:multiplayer state)) (update :board (comp vec reverse))))
 
 (defmethod perform-action :check-board-state [state action]
@@ -281,11 +287,20 @@
     (dissoc state :waiting)))
 
 (defn handle-actions [{:keys [actions] :as state}]
+  (println state)
   (reduce
     (fn [s action]
       (perform-action s action))
     (dissoc state :actions)
-    actions))
+    (distinct actions)))
+
+(defn get-turn-timer [state]
+  (- TURN_TIMER_LIMIT (int (/ (- (.getTime (Date.)) (:turn-timer state)) 1000))))
+
+(defn handle-turn-timer [state]
+  (if (zero? (get-turn-timer state))
+    (update state :actions conj {:type :turn-switch})
+    state))
 
 (def prev-state (atom {}))
 (defn update-state [{:keys [multiplayer actions] :as state}]
@@ -293,6 +308,7 @@
     (println state)
     (reset! prev-state state))
   (cond-> state
+    true handle-turn-timer
     multiplayer handle-multiplayer
     actions handle-actions))
 
@@ -311,6 +327,11 @@
       (q/text (str "Your turn") 150 30)))
   (when (not= :in-progress (:game-state state))
     (q/text (name (:game-state state)) (/ screen-size 2) 30))
+  (q/text (str "Time elapsed: " (let [total-seconds (/ (- (.getTime (Date.)) (:start-time state)) 1000.0)
+                                      minutes (int (/ total-seconds 60))
+                                      seconds (int (mod total-seconds 60))]
+                                  (format "%02d:%02d" minutes seconds))) 10 (- screen-size 10))
+  (q/text (str "Turn timer: " (get-turn-timer state)) (/ screen-size 2) (- screen-size 10))
   (q/text-size 30)
 
   ;; draw board
