@@ -39,7 +39,7 @@
    :multiplayer false
    :turn :red
    :player :red
-   :state :in-progress})
+   :game-state :in-progress})
 
 (defn notify-opponent [{:keys [multiplayer] :as state}]
   (when multiplayer
@@ -202,59 +202,99 @@
                (< margin y (+ board-width margin)))
         ;; dropped piece is on valid square within bounds of board
         (-> state
-            (assoc-in [:board release-square]
-                      (if (< release-square 8)
-                        (if (= piece RED) RED_KING BLACK_KING)
-                        piece))
-            (assoc-in [:board square] EMPTY)
-            (update :board (fn [board]
-                             (if-let [jumped-square (find-jumped-square square release-square)]
-                               (do (audio/play-sound :jump)
-                                 (assoc board jumped-square EMPTY))
-                               (do (audio/play-sound :move)
-                                 board))))
-            (dissoc :selected :jumping-piece)
-            ((fn [s]
-               (if (and (seq (get-valid-jumps state square))
-                        (seq (get-valid-jumps s release-square)))
-                 (assoc s :jumping-piece release-square)
-                 (cond-> s
-                     true (update :turn #(if (= % :red) :black :red))
-                     (not (:multiplayer s)) (update :board (comp vec reverse))))))
-            ((fn [s]
-               (assoc s :state
-                        (cond ;todo game is tied
-                          (not (seq (filter #{BLACK BLACK_KING} (:board s))))
-                          (do (if (= :red (:player state))
-                                (audio/play-sound :won)
-                                (audio/play-sound :lost))
-                            :red-wins)
-                          (not (seq (filter #{RED RED_KING} (:board s))))
-                          (do (if (= :black (:player state))
-                                (audio/play-sound :won)
-                                (audio/play-sound :lost))
-                              :black-wins)
-                          :else
-                          :in-progress))))
-            notify-opponent)
+            (update :actions conj {:type :move :release-square release-square
+                                   :square square :piece piece}))
         ;; reset piece to original square
         (-> state
             ;(assoc-in [:board square] piece)
             (dissoc :selected))))
     state))
 
-(defn mouse-dragged [{:keys [selected] :as state}
-                     {:keys [x y] :as event}]
+;todo mouse functions should return actions in a vector that the update function will
+;todo spec could look like :actions [{:play-sound :move} {:wait-frames 30 :move [0 8]}]
+
+(defmulti perform-action
+          (fn [state {:keys [type]}] type))
+
+(defmethod perform-action :move [state {:keys [release-square piece square]}]
+  ;do move
+  ;conj action to change players
+  (-> state
+      (assoc-in [:board release-square]
+                (if (< release-square 8)
+                  (condp = piece RED RED_KING BLACK BLACK_KING piece)
+                  piece))
+      (assoc-in [:board square] EMPTY)
+      (update :actions (fn [actions]
+                         (if-let [jumped-square (find-jumped-square square release-square)]
+                           (conj actions {:type :jump :jumped-square jumped-square :release-square release-square})
+                           (conj actions {:type :turn-switch} {:type :play-sound :clip :move}))))
+      (dissoc :selected :jumping-piece)))
+
+(defmethod perform-action :jump [state {:keys [release-square jumped-square]}]
+  (let [new-state (-> state
+                      (update :actions conj {:type :play-sound :clip :jump})
+                      (assoc-in [:board jumped-square] EMPTY))]
+    (if (seq (get-valid-jumps new-state release-square))
+      (assoc new-state :jumping-piece release-square)
+      (update new-state :actions conj {:type :turn-switch}))))
+
+(defmethod perform-action :play-sound [state action]
+  (audio/play-sound (:clip action))
+  state)
+
+(defmethod perform-action :turn-switch [state action]
+  (cond-> state
+    true (update :actions conj {:type :check-board-state})
+    true (update :turn #(if (= % :red) :black :red))
+    (not (:multiplayer state)) (update :board (comp vec reverse))))
+
+(defmethod perform-action :check-board-state [state action]
+  (-> state
+      (assoc :game-state
+             (cond ;todo game is tied
+               (not (seq (filter #{BLACK BLACK_KING} (:board state))))
+               (do (if (= :red (:player state))
+                     (audio/play-sound :won)
+                     (audio/play-sound :lost))
+                   :red-wins)
+               (not (seq (filter #{RED RED_KING} (:board state))))
+               (do (if (= :black (:player state))
+                     (audio/play-sound :won)
+                     (audio/play-sound :lost))
+                   :black-wins)
+               :else
+               :in-progress))
+      notify-opponent ;todo should this be it's own action?
+      ))
+
+(defn mouse-dragged [{:keys [selected] :as state} {:keys [x y] :as event}]
   (if selected
     (update state :selected assoc :x x :y y)
     state))
 
-(defn update-state [{:keys [multiplayer turn player flip-board] :as state}]
+(defn handle-multiplayer [{:keys [multiplayer turn player] :as state}]
   (if (and multiplayer (not= turn player))
     (if-let [new-state (read-opponent-msg state)]
       (dissoc new-state :waiting)
       (assoc state :waiting true))
     (dissoc state :waiting)))
+
+(defn handle-actions [{:keys [actions] :as state}]
+  (reduce
+    (fn [s action]
+      (perform-action s action))
+    (dissoc state :actions)
+    actions))
+
+(def prev-state (atom {}))
+(defn update-state [{:keys [multiplayer actions] :as state}]
+  #_(when (not= @prev-state state)
+    (println state)
+    (reset! prev-state state))
+  (cond-> state
+    multiplayer handle-multiplayer
+    actions handle-actions))
 
 (defn draw-state [{:keys [board selected turn] :as state}]
   ;board grid
@@ -269,8 +309,8 @@
     (if (:waiting state)
       (q/text (str "Waiting for oppoent to move") 150 30)
       (q/text (str "Your turn") 150 30)))
-  (when (not= :in-progress (:state state))
-    (q/text (name (:state state)) (/ screen-size 2) 30))
+  (when (not= :in-progress (:game-state state))
+    (q/text (name (:game-state state)) (/ screen-size 2) 30))
   (q/text-size 30)
 
   ;; draw board
