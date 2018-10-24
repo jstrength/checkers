@@ -14,11 +14,11 @@
 
 (defn server-channel [port read-ch write-ch]
   (go
-    (with-open [server-chan (doto (ServerSocketChannel/open)
-                              (.setOption StandardSocketOptions/SO_REUSEADDR true)
-                              (.bind (InetSocketAddress. port)))
-                _ (println "Waiting on client to connect...")
-                sock-chan (.accept server-chan)]
+    (let [server-chan (doto (ServerSocketChannel/open)
+                        (.setOption StandardSocketOptions/SO_REUSEADDR true)
+                        (.bind (InetSocketAddress. port)))
+          _ (println "Waiting on client to connect...")
+          sock-chan (.accept server-chan)]
       (println "Client connected!")
       (go-loop []
         (println "Server reading")
@@ -40,7 +40,7 @@
 
 (defn client-channel [host port read-ch write-ch]
   (try
-    (with-open [sock-chan (SocketChannel/open (InetSocketAddress. ^String host ^Integer port))]
+    (let [sock-chan (SocketChannel/open (InetSocketAddress. ^String host ^Integer port))]
       (println "Connected")
       (go-loop []
         (println "Client reading")
