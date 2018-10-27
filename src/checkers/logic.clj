@@ -122,14 +122,16 @@
       (update new-state :actions conj {:type :turn-switch}))))
 
 (defmethod perform-action :play-sound [state action]
-  (audio/play-sound (:clip action))
+  (when (:sound-on? state)
+    (audio/play-sound (:clip action)))
   state)
 
 (defmethod perform-action :turn-switch [state action]
   (cond-> state
     true (update :actions conj {:type :check-board-state})
     true (update :turn #(if (= % :red) :black :red))
-    true (assoc :turn-timer (.getTime (Date.)))
+    true (assoc :last-turn-seconds 0)
+    true (dissoc :selected)
     (not (:multiplayer state)) (update :board (comp vec reverse))))
 
 (defmethod perform-action :check-board-state [state action]

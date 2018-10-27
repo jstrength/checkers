@@ -1,6 +1,6 @@
-(ns checkers.utils
-  (:import (java.util Date)))
+(ns checkers.utils)
 
+;todo don't upper case _ constants, just regular cabab case
 (def SCREEN_SIZE 500)
 (def MARGIN 50)
 (def BOARD_WIDTH (- SCREEN_SIZE (* 2 MARGIN)))
@@ -13,7 +13,18 @@
 (def BLACK_KING 3)
 (def RED_KING 4)
 
-(def TURN_TIMER_LIMIT 10)
+(def TURN_TIMER_LIMIT 5)
+
+(defn get-next-menu [current-state menu-states]
+  (nth menu-states (mod (inc (.indexOf menu-states current-state)) (count menu-states))))
+
+(defn get-previous-menu [current-state menu-states]
+  (nth menu-states (mod (dec (.indexOf menu-states current-state)) (count menu-states))))
+
+(def main-menu-states
+  [:start :multiplayer :settings :quit])
+(def settings-menu-states
+  [:sound :dark :light :board])
 
 (def position-coordinates
   (vec (for [y (range 8)
@@ -25,7 +36,3 @@
 (defn get-nth [board n]
   (when (>= 63 n 0)
     (nth board n)))
-
-(defn get-turn-timer [state]
-  (- TURN_TIMER_LIMIT (int (/ (- (.getTime (Date.)) (:turn-timer state)) 1000))))
-

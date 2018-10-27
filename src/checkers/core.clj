@@ -8,8 +8,8 @@
             [checkers.server :as server])
   (:import (java.util Date)))
 
-(def read-ch (async/chan))
-(def write-ch (async/chan))
+(def read-ch (async/chan 100))
+(def write-ch (async/chan 100))
 
 (def starting-state
   {:board (vec (for [n (range 0 64)]
@@ -19,28 +19,34 @@
                            (> n (- 63 (* 3 8))) RED
                            :else EMPTY)
                      EMPTY))))
-   :start-time (.getTime (Date.))
-   :turn-timer (.getTime (Date.))
+   :start-time 0
+   :last-turn-seconds 0
+   :total-seconds 0
    :multiplayer false
+   :sound-on? true
    :turn :red
    :player :red
-   :game-state :in-progress})
+   :dark-color :black
+   :light-color :red
+   :menu-item-selected :start
+   :game-state :menu})
 
+(def last-state (atom starting-state))
 (defn notify-opponent [{:keys [multiplayer] :as state}]
   (when multiplayer
     (println (pr-str (update state :board (comp vec reverse))))
-    (async/put! write-ch (pr-str (update state :board (comp vec reverse)))))
+    (if (not= @last-state state)
+      (reset! last-state state)
+      (async/put! write-ch (pr-str (update state :board (comp vec reverse))))))
   state)
 
 (defn read-opponent-msg [{:keys [multiplayer player turn] :as state}]
   (when (and multiplayer (not= player turn))
     (when-let [msg (async/poll! read-ch)]
-      (println "msg:" msg)
+      ;(println "msg:" msg)
       (let [new-state (read-string msg)]
-        (println new-state)
-        (if (:jumping-piece new-state)
-          (assoc new-state :player player)
-          (assoc new-state :player player :turn player))))))
+        ;(println new-state)
+        (assoc new-state :player player :waiting (= turn (:turn new-state)))))))
 
 (defn on-close [e]
   (println e)
@@ -54,23 +60,19 @@
   (q/text-size 30)
   ; setup function returns initial state. It contains
   ; circle color and position.
-  (let [starting-state
-        (assoc starting-state
-          :start-time (.getTime (Date.))
-          :turn-timer (.getTime (Date.)))]
-    (case (first args)
-      "server" (do (server/server-channel 1337 read-ch write-ch)
-                   (assoc starting-state :player :red
-                                         :multiplayer true)
-                   )
-      "client" (do (server/client-channel (second args) 1337 read-ch write-ch)
-                   (-> starting-state
-                       (update :board (comp vec reverse))
-                       (assoc :player :black :multiplayer true)))
-      starting-state)))
+  (case (first args)
+    "server" (do (server/server-channel 1337 read-ch write-ch)
+                 (assoc starting-state :player :red
+                                       :multiplayer true))
+    "client" (do (server/client-channel (second args) 1337 read-ch write-ch)
+                 (-> starting-state
+                     (update :board (comp vec reverse))
+                     (assoc :player :black :multiplayer true)))
+    starting-state))
 
-(defn mouse-pressed [{:keys [turn board jumping-piece] :as state} {:keys [x y] :as event}]
-  (if (and (> (- SCREEN_SIZE MARGIN) x MARGIN)
+(defn mouse-pressed [{:keys [game-state turn board jumping-piece] :as state} {:keys [x y] :as event}]
+  (if (and (= game-state :in-progress)
+           (> (- SCREEN_SIZE MARGIN) x MARGIN)
            (> (- SCREEN_SIZE MARGIN) y MARGIN))
     (let [square (+ (quot (- x MARGIN) SQUARE_WIDTH)
                     (* 8 (quot (- y MARGIN) SQUARE_WIDTH)))]
@@ -110,45 +112,125 @@
     (update state :selected assoc :x x :y y)
     state))
 
+(defn key-pressed [state event]
+  (println event)
+  (println state)
+  (case (:game-state state)
+        :menu
+        (case (:key-code event)
+          38 ;up
+          (update state :menu-item-selected get-next-menu main-menu-states)
+          40 ;down
+          (update state :menu-item-selected get-previous-menu main-menu-states)
+          10 ;return
+          (-> state
+              (assoc :game-state
+                     (case (:menu-item-selected state)
+                       :start :in-progress
+                       :multiplayer :multiplayer-menu
+                       :settings :settings-menu
+                       :quit (System/exit 0)))
+              (update :menu-item-selected
+                      (fn [item-selected]
+                        (case item-selected
+                          :settings :sound
+                          :multiplayer :host
+                          item-selected))))
+
+          state)
+        :settings-menu
+        (case (:key-code event)
+          38 ;up
+          (update state :menu-item-selected get-next-menu settings-menu-states)
+          40 ;down
+          (update state :menu-item-selected get-previous-menu settings-menu-states)
+          37 ;left
+          (case (:menu-item-selected state)
+            :sound
+            (update state :sound-on? not)
+            :dark
+            (update state :dark-color get-next-menu (vec (keys draw/dark-colors)))
+            :light
+            (update state :light-color get-next-menu (vec (keys draw/light-colors)))
+            state)
+          39 ;right
+          (case (:menu-item-selected state)
+            :sound
+            (update state :sound-on? not)
+            :dark
+            (update state :dark-color get-next-menu (vec (keys draw/dark-colors)))
+            :light
+            (update state :light-color get-previous-menu (vec (keys draw/light-colors)))
+            state)
+          8 ;backspace
+          (assoc state :game-state :menu
+                       :menu-item-selected (first main-menu-states))
+          state)
+
+        :multiplayer-menu
+        (case (:key-code event)
+          8 ;backspace
+          (assoc state :game-state :menu
+                       :menu-item-selected (first main-menu-states)))
+
+        (case (:key event)
+          :r (assoc state :game-state :in-progress
+                          :start-time (.getTime (Date.)))
+          :p (assoc state :game-state :paused)
+          :q starting-state
+          state)))
+
 (defn handle-multiplayer [{:keys [multiplayer turn player] :as state}]
   (if (and multiplayer (not= turn player))
-    (if-let [new-state (read-opponent-msg state)]
-      (dissoc new-state :waiting)
-      (assoc state :waiting true))
+    (or (read-opponent-msg state) state)
     (dissoc state :waiting)))
 
 (defn handle-actions [{:keys [actions] :as state}]
   (println state)
-  (if actions
-    (notify-opponent
-      (reduce
-        (fn [s action]
-          (logic/perform-action s action))
-        (dissoc state :actions)
-        (distinct actions))) ;todo why does actions get duplicate action???
-    state))
+  (reduce
+    (fn [s action]
+      (logic/perform-action s action))
+    (dissoc state :actions)
+    (distinct actions)) ;todo why need distinct?/?
+  )
 
 (defn handle-turn-timer [state]
-  (if (zero? (get-turn-timer state))
-    (update state :actions conj {:type :turn-switch})
+  (if (>= (- (.getTime (Date.)) (:start-time state)) 1000)
+    (cond-> (-> state
+                (update :last-turn-seconds inc)
+                (update :total-seconds inc)
+                (assoc :start-time (.getTime (Date.))))
+      (zero? (- TURN_TIMER_LIMIT (:last-turn-seconds state)))
+      (update :actions conj {:type :turn-switch}))
     state))
 
 (def prev-state (atom {}))
-(defn update-state [{:keys [multiplayer actions] :as state}]
+(defn update-state [{:keys [game-state multiplayer actions] :as state}]
   #_(when (not= @prev-state state)
     (println state)
     (reset! prev-state state))
   (cond-> state
-    true handle-turn-timer
+    true notify-opponent
+    (= :in-progress game-state) handle-turn-timer
     multiplayer handle-multiplayer
     actions handle-actions))
 
 (defn draw-state [state]
-  (doto state
-    (draw/draw-board!)
-    (draw/game-text!)
-    (draw/draw-selected-peice!)
-    (draw/static-pieces!)))
+  (case (:game-state state)
+    :menu
+    (doto state
+      (draw/menu))
+    :settings-menu
+    (doto state
+      (draw/settings-menu))
+    :multiplayer-menu
+    (doto state
+      (draw/multiplayer-menu))
+    (doto state
+      (draw/draw-board!)
+      (draw/static-pieces!)
+      (draw/draw-selected-peice!)
+      (draw/game-text!))))
 
 (defn -main [& args]
   (q/defsketch checkers-quil
@@ -162,6 +244,7 @@
     :mouse-pressed mouse-pressed
     :mouse-released mouse-released
     :mouse-dragged mouse-dragged
+    :key-pressed key-pressed
     :on-close on-close
     :features [:keep-on-top #_:exit-on-close]
     ; This sketch uses functional-mode middleware.
