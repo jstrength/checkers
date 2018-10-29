@@ -5,6 +5,7 @@
             [checkers.draw :as draw]
             [checkers.logic :as logic]
             [checkers.utils :refer :all]
+            [checkers.navigation :as nav]
             [checkers.server :as server])
   (:import (java.util Date)))
 
@@ -23,12 +24,16 @@
    :last-turn-seconds 0
    :total-seconds 0
    :multiplayer false
-   :sound-on? true
    :turn :red
    :player :red
+
    :dark-color :black
    :light-color :red
-   :menu-item-selected :start
+   :dark-square-color :brown
+   :light-square-color :white
+   :sound-on? true
+
+   :current-menu nav/main-menu
    :game-state :menu})
 
 (def last-state (atom starting-state))
@@ -115,70 +120,14 @@
 (defn key-pressed [state event]
   (println event)
   (println state)
-  (case (:game-state state)
-        :menu
-        (case (:key-code event)
-          38 ;up
-          (update state :menu-item-selected get-next-menu main-menu-states)
-          40 ;down
-          (update state :menu-item-selected get-previous-menu main-menu-states)
-          10 ;return
-          (-> state
-              (assoc :game-state
-                     (case (:menu-item-selected state)
-                       :start :in-progress
-                       :multiplayer :multiplayer-menu
-                       :settings :settings-menu
-                       :quit (System/exit 0)))
-              (update :menu-item-selected
-                      (fn [item-selected]
-                        (case item-selected
-                          :settings :sound
-                          :multiplayer :host
-                          item-selected))))
-
-          state)
-        :settings-menu
-        (case (:key-code event)
-          38 ;up
-          (update state :menu-item-selected get-next-menu settings-menu-states)
-          40 ;down
-          (update state :menu-item-selected get-previous-menu settings-menu-states)
-          37 ;left
-          (case (:menu-item-selected state)
-            :sound
-            (update state :sound-on? not)
-            :dark
-            (update state :dark-color get-next-menu (vec (keys draw/dark-colors)))
-            :light
-            (update state :light-color get-next-menu (vec (keys draw/light-colors)))
-            state)
-          39 ;right
-          (case (:menu-item-selected state)
-            :sound
-            (update state :sound-on? not)
-            :dark
-            (update state :dark-color get-next-menu (vec (keys draw/dark-colors)))
-            :light
-            (update state :light-color get-previous-menu (vec (keys draw/light-colors)))
-            state)
-          8 ;backspace
-          (assoc state :game-state :menu
-                       :menu-item-selected (first main-menu-states))
-          state)
-
-        :multiplayer-menu
-        (case (:key-code event)
-          8 ;backspace
-          (assoc state :game-state :menu
-                       :menu-item-selected (first main-menu-states)))
-
-        (case (:key event)
-          :r (assoc state :game-state :in-progress
-                          :start-time (.getTime (Date.)))
-          :p (assoc state :game-state :paused)
-          :q starting-state
-          state)))
+  (if (= :menu (:game-state state))
+    (nav/handle-nav state event)
+    (case (:key event)
+      :r (assoc state :game-state :in-progress
+                      :start-time (.getTime (Date.)))
+      :p (assoc state :game-state :paused)
+      :q starting-state
+      state)))
 
 (defn handle-multiplayer [{:keys [multiplayer turn player] :as state}]
   (if (and multiplayer (not= turn player))
@@ -216,21 +165,9 @@
     actions handle-actions))
 
 (defn draw-state [state]
-  (case (:game-state state)
-    :menu
-    (doto state
-      (draw/menu))
-    :settings-menu
-    (doto state
-      (draw/settings-menu))
-    :multiplayer-menu
-    (doto state
-      (draw/multiplayer-menu))
-    (doto state
-      (draw/draw-board!)
-      (draw/static-pieces!)
-      (draw/draw-selected-peice!)
-      (draw/game-text!))))
+  (if (= :menu (:game-state state))
+    (doto state (draw/menu))
+    (doto state (draw/game))))
 
 (defn -main [& args]
   (q/defsketch checkers-quil

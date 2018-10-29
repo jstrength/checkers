@@ -15,16 +15,24 @@
 
 (def TURN_TIMER_LIMIT 5)
 
-(defn get-next-menu [current-state menu-states]
-  (nth menu-states (mod (inc (.indexOf menu-states current-state)) (count menu-states))))
+(def dark-colors {:black [0]
+                  :olive [128 128 0]
+                  :navy [0 0 128]
+                  :brown [180 120 70]
+                  :maroon [128 0 0]})
 
-(defn get-previous-menu [current-state menu-states]
-  (nth menu-states (mod (dec (.indexOf menu-states current-state)) (count menu-states))))
+(def light-colors {:red [255 0 0]
+                   :white [255 255 255]
+                   :yellow [255 255 0]
+                   :lime [0 255 0]
+                   :magenta [255 0 255]})
 
-(def main-menu-states
-  [:start :multiplayer :settings :quit])
-(def settings-menu-states
-  [:sound :dark :light :board])
+(def up-key 38)
+(def down-key 40)
+(def right-key 39)
+(def left-key 37)
+(def backspace-key 8)
+(def enter-key 10)
 
 (def position-coordinates
   (vec (for [y (range 8)

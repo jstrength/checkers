@@ -3,16 +3,6 @@
             [checkers.utils :refer :all]
             [checkers.logic :as logic]))
 
-(def dark-colors {:black [0]
-                  :olive [128 128 0]
-                  :navy [0 0 128]
-                  :maroon [128 0 0]})
-
-(def light-colors {:red [255 0 0]
-                   :yellow [255 255 0]
-                   :lime [0 255 0]
-                   :magenta [255 0 255]})
-
 (defn game-text! [{:keys [turn] :as state}]
   (q/text-size 20)
   (q/fill 0)
@@ -42,7 +32,11 @@
 (defn ^:private  get-quil-color [color]
   (apply q/color (get dark-colors color (get light-colors color))))
 
-(defn ^:private draw-static-piece
+(defn draw-square [x y color]
+  (q/fill (get-quil-color color))
+  (q/rect x y SQUARE_WIDTH SQUARE_WIDTH))
+
+(defn draw-static-piece
   ([x y color]
    (q/fill (get-quil-color color))
    (q/ellipse x y PIECE_WIDTH PIECE_WIDTH))
@@ -68,17 +62,21 @@
               b))))
       board)))
 
-(defn draw-board! [state]
+(defn draw-board! [{:keys [dark-square-color light-square-color] :as state}]
   (q/background 255)
   (q/stroke 0)
 
   (doseq [n (range 9)]
     (q/line MARGIN (+ MARGIN (* SQUARE_WIDTH n)) (+ BOARD_WIDTH MARGIN) (+ MARGIN (* SQUARE_WIDTH n)))
     (q/line (+ MARGIN (* SQUARE_WIDTH n)) MARGIN (+ MARGIN (* SQUARE_WIDTH n)) (+ BOARD_WIDTH MARGIN)))
-  (q/fill 180 120 70)
   (doseq [{:keys [x y raw-x raw-y]} position-coordinates]
-    (when (if (odd? raw-y) (even? raw-x) (odd? raw-x))
-      (q/rect x y SQUARE_WIDTH SQUARE_WIDTH))))
+    (if (if (odd? raw-y) (even? raw-x) (odd? raw-x))
+      (do
+        (q/fill (get-quil-color dark-square-color))
+        (q/rect x y SQUARE_WIDTH SQUARE_WIDTH))
+      (do
+        (q/fill (get-quil-color light-square-color))
+        (q/rect x y SQUARE_WIDTH SQUARE_WIDTH)))))
 
 (defn draw-selected-peice! [{:keys [board selected] :as state}]
   (when-let [{:keys [x y piece square]} selected]
@@ -111,28 +109,17 @@
   (q/text text (inc x) (inc y))
   (q/fill 0))
 
-(defn menu [{:keys [menu-item-selected] :as state}]
+(defn menu [{:keys [current-menu] :as state}]
   (q/background 255)
   (q/text-size 50)
-  (draw-menu-item 100 100 "Start Game" (= :start menu-item-selected))
-  (draw-menu-item 100 200 "Multiplayer" (= :multiplayer menu-item-selected))
-  (draw-menu-item 100 300 "Settings" (= :settings menu-item-selected))
-  (draw-menu-item 100 400 "Quit" (= :quit menu-item-selected)))
+  (doall (map-indexed
+           (fn [idx {:keys [draw]}]
+             (draw state 75 (+ 100 (* (/ 400 (count (:items current-menu))) idx))))
+           (:items current-menu))))
 
-(defn settings-menu [{:keys [menu-item-selected] :as state}]
-  ;piece colors, board style
-  (q/background 255)
-  (draw-menu-item 100 100 (format "Sound: %s" (if (:sound-on? state) "ON" "OFF")) (= :sound menu-item-selected))
-  (draw-menu-item 100 200 "Dark Color:" (= :dark menu-item-selected))
-  (draw-static-piece (+ 100 (q/text-width "Dark Color:  ")) 185 (get dark-colors (:dark-color state)))
-  (draw-menu-item 100 300 "Light Color:" (= :light menu-item-selected))
-  (draw-static-piece (+ 100 (q/text-width "Light Color:  ")) 285 (get light-colors (:light-color state)))
-  (draw-menu-item 100 400 "Board Style" (= :board menu-item-selected))
-  )
-
-(defn multiplayer-menu [{:keys [menu-item-selected] :as state}]
-  ;todo another menu
-  (q/background 255)
-  (draw-menu-item 100 100 "Host Game" (= :start menu-item-selected))
-  (draw-menu-item 100 200 "Join Game" (= :start menu-item-selected))
-  )
+(defn game [state]
+  (doto state
+    (draw-board!)
+    (static-pieces!)
+    (draw-selected-peice!)
+    (game-text!)))
