@@ -102,16 +102,17 @@
 
 
 (defn draw-menu-item [x y text selected?]
-  (q/fill 0)
+  (q/fill (get-quil-color :black)) ;;todo black boarder around text
   (when selected?
-    (q/fill 255 0 0))
+    (q/fill (get-quil-color :red)))
   (q/text text x y)
-  (q/text text (inc x) (inc y))
-  (q/fill 0))
+  (q/text text (inc x) (inc y)))
 
-(defn menu [{:keys [current-menu] :as state}]
-  (q/background 255)
+(defn menu [{:keys [background-img current-menu] :as state}]
+  (q/image background-img 0 0 SCREEN_SIZE SCREEN_SIZE) ;;todo rotate background or something cool
   (q/text-size 50)
+  (q/fill (get-quil-color :white))
+  (q/rect 50 50 375 375)
   (doall (map-indexed
            (fn [idx {:keys [draw]}]
              (draw state 75 (+ 100 (* (/ 400 (count (:items current-menu))) idx))))

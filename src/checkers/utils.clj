@@ -22,7 +22,7 @@
                   :maroon [128 0 0]})
 
 (def light-colors {:red [255 0 0]
-                   :white [255 255 255]
+                   :white [245 245 245]
                    :yellow [255 255 0]
                    :lime [0 255 0]
                    :magenta [255 0 255]})

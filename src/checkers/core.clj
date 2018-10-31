@@ -6,7 +6,8 @@
             [checkers.logic :as logic]
             [checkers.utils :refer :all]
             [checkers.navigation :as nav]
-            [checkers.server :as server])
+            [checkers.server :as server]
+            [clojure.java.io :as io])
   (:import (java.util Date)))
 
 (def read-ch (async/chan 100))
@@ -32,6 +33,8 @@
    :dark-square-color :brown
    :light-square-color :white
    :sound-on? true
+   :ip ""
+   :port ""
 
    :current-menu nav/main-menu
    :game-state :menu})
@@ -63,17 +66,22 @@
   ; Set frame rate to 30 frames per second.
   (q/frame-rate 30)
   (q/text-size 30)
+  (q/smooth)
+
+  (q/text-font (q/create-font "AllStarResort.ttf" 50 true))
+
   ; setup function returns initial state. It contains
   ; circle color and position.
-  (case (first args)
-    "server" (do (server/server-channel 1337 read-ch write-ch)
-                 (assoc starting-state :player :red
-                                       :multiplayer true))
-    "client" (do (server/client-channel (second args) 1337 read-ch write-ch)
-                 (-> starting-state
-                     (update :board (comp vec reverse))
-                     (assoc :player :black :multiplayer true)))
-    starting-state))
+  (let [starting-state (assoc starting-state :background-img (q/load-image "background.jpg"))] ;todo move into it's own resource-state instead?
+    (case (first args)
+      "server" (do (server/server-channel 1337 read-ch write-ch)
+                   (assoc starting-state :player :red
+                                         :multiplayer true))
+      "client" (do (server/client-channel (second args) 1337 read-ch write-ch)
+                   (-> starting-state
+                       (update :board (comp vec reverse))
+                       (assoc :player :black :multiplayer true)))
+      starting-state)))
 
 (defn mouse-pressed [{:keys [game-state turn board jumping-piece] :as state} {:keys [x y] :as event}]
   (if (and (= game-state :in-progress)
@@ -119,14 +127,14 @@
 
 (defn key-pressed [state event]
   (println event)
-  (println state)
-  (if (= :menu (:game-state state))
+  (if (#{:paused :menu} (:game-state state))
     (nav/handle-nav state event)
     (case (:key event)
       :r (assoc state :game-state :in-progress
                       :start-time (.getTime (Date.)))
-      :p (assoc state :game-state :paused)
-      :q starting-state
+      :p (assoc state :game-state :paused
+                      :current-menu nav/pause-menu)
+      :q (merge (select-keys state [:background-img]) starting-state)
       state)))
 
 (defn handle-multiplayer [{:keys [multiplayer turn player] :as state}]
@@ -135,7 +143,7 @@
     (dissoc state :waiting)))
 
 (defn handle-actions [{:keys [actions] :as state}]
-  (println state)
+  ;(println state)
   (reduce
     (fn [s action]
       (logic/perform-action s action))
@@ -165,7 +173,7 @@
     actions handle-actions))
 
 (defn draw-state [state]
-  (if (= :menu (:game-state state))
+  (if (#{:paused :menu} (:game-state state))
     (doto state (draw/menu))
     (doto state (draw/game))))
 
