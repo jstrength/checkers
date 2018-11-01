@@ -1,5 +1,6 @@
 (ns checkers.server
-  (:require [clojure.core.async :as async :refer [go go-loop <! put!]])
+  (:require [clojure.core.async :as async :refer [go go-loop <! put!]]
+            [checkers.utils :refer :all])
   (:import (java.net InetSocketAddress ConnectException StandardSocketOptions)
            (java.nio.channels ServerSocketChannel SocketChannel)
            (java.nio ByteBuffer)))
@@ -12,7 +13,7 @@
 (defn msg->byte-buffer [msg]
   (ByteBuffer/wrap (byte-array (map byte (subs (format (str "%" BUFFER_SIZE "s") msg) 0 BUFFER_SIZE)))))
 
-(defn server-channel [port read-ch write-ch]
+(defn server-channel [read-ch write-ch]
   (go
     (let [server-chan (doto (ServerSocketChannel/open)
                         (.setOption StandardSocketOptions/SO_REUSEADDR true)
@@ -38,7 +39,7 @@
             (when (.isConnected sock-chan)
               (recur))))))))
 
-(defn client-channel [host port read-ch write-ch]
+(defn client-channel [host read-ch write-ch]
   (try
     (let [sock-chan (SocketChannel/open (InetSocketAddress. ^String host ^Integer port))]
       (println "Connected")
@@ -64,8 +65,8 @@
   (def s-write-c (async/chan))
   (def c-read-c (async/chan))
   (def c-write-c (async/chan))
-  (server-channel 1525 s-read-c s-write-c)
-  (client-channel 1525 c-read-c c-write-c)
+  (server-channel s-read-c s-write-c)
+  (client-channel c-read-c c-write-c)
   (async/put! c-write-c "YI! wow hi :)")
   (async/put! s-write-c "hey guy :)")
   (go (<! s-read-c))

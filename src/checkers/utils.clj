@@ -34,6 +34,8 @@
 (def backspace-key 8)
 (def enter-key 10)
 
+(def port 1337)
+
 (def position-coordinates
   (vec (for [y (range 8)
              x (range 8)]

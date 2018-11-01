@@ -8,7 +8,8 @@
             [checkers.navigation :as nav]
             [checkers.server :as server]
             [clojure.java.io :as io])
-  (:import (java.util Date)))
+  (:import (java.util Date)
+           (java.net InetAddress)))
 
 (def read-ch (async/chan 100))
 (def write-ch (async/chan 100))
@@ -34,7 +35,6 @@
    :light-square-color :white
    :sound-on? true
    :ip ""
-   :port ""
 
    :current-menu nav/main-menu
    :game-state :menu})
@@ -68,16 +68,17 @@
   (q/text-size 30)
   (q/smooth)
 
-  (q/text-font (q/create-font "AllStarResort.ttf" 50 true))
+  ;(q/text-font (q/create-font "AllStarResort.ttf" 50 true))
+  (q/text-font (q/create-font "AndaleMono" 50))
 
   ; setup function returns initial state. It contains
   ; circle color and position.
   (let [starting-state (assoc starting-state :background-img (q/load-image "background.jpg"))] ;todo move into it's own resource-state instead?
     (case (first args)
-      "server" (do (server/server-channel 1337 read-ch write-ch)
+      "server" (do (server/server-channel read-ch write-ch)
                    (assoc starting-state :player :red
                                          :multiplayer true))
-      "client" (do (server/client-channel (second args) 1337 read-ch write-ch)
+      "client" (do (server/client-channel (second args) read-ch write-ch)
                    (-> starting-state
                        (update :board (comp vec reverse))
                        (assoc :player :black :multiplayer true)))
@@ -130,8 +131,6 @@
   (if (#{:paused :menu} (:game-state state))
     (nav/handle-nav state event)
     (case (:key event)
-      :r (assoc state :game-state :in-progress
-                      :start-time (.getTime (Date.)))
       :p (assoc state :game-state :paused
                       :current-menu nav/pause-menu)
       :q (merge (select-keys state [:background-img]) starting-state)

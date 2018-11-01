@@ -26,7 +26,7 @@
   (q/text (str "Turn timer: " (- TURN_TIMER_LIMIT (:last-turn-seconds state)))
           (/ SCREEN_SIZE 2) (- SCREEN_SIZE 25))
   (q/text-size 10)
-  (q/text "Hotkeys: r - resume game, p - pause game, q - quit to main menu" 10 (- SCREEN_SIZE 10))
+  (q/text "Hotkeys: p - pause game, q - quit to main menu" 10 (- SCREEN_SIZE 10))
   (q/text-size 30))
 
 (defn ^:private  get-quil-color [color]
@@ -105,18 +105,18 @@
   (q/fill (get-quil-color :black)) ;;todo black boarder around text
   (when selected?
     (q/fill (get-quil-color :red)))
-  (q/text text x y)
-  (q/text text (inc x) (inc y)))
+  (q/text text x y))
 
 (defn menu [{:keys [background-img current-menu] :as state}]
   (q/image background-img 0 0 SCREEN_SIZE SCREEN_SIZE) ;;todo rotate background or something cool
-  (q/text-size 50)
+  (q/text-size 40)
   (q/fill (get-quil-color :white))
-  (q/rect 50 50 375 375)
+  (q/rect 50 40 375 410)
   (doall (map-indexed
-           (fn [idx {:keys [draw]}]
-             (draw state 75 (+ 100 (* (/ 400 (count (:items current-menu))) idx))))
-           (:items current-menu))))
+           (fn [idx display-item]
+             (let [draw-fn (get-in current-menu [:items display-item :draw])]
+               (draw-fn state 75 (+ 100 (* (/ 400 (count (:items current-menu))) idx)))))
+           (:display-order current-menu))))
 
 (defn game [state]
   (doto state
