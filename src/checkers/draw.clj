@@ -3,30 +3,42 @@
             [checkers.utils :refer :all]
             [checkers.logic :as logic]))
 
+(def menu-text-size 40)
+
+(declare draw-static-piece)
+
 (defn game-text! [{:keys [turn] :as state}]
   (q/text-size 20)
   (q/fill 0)
-  (q/text (str "Turn: " (name turn)) 10 30)
-  (when (:player state)
-    (if (:waiting state)
-      (q/text (str "Waiting for opponent to move") 150 30)
-      (q/text (str "Your turn") 150 30)))
-  (case (:game-state state)
-    :paused (do (q/text-size 70)
-                (q/fill 100 100 100)
-                (q/text "Game Paused" 20 275)
-                (q/fill 0)
-                (q/text-size 20))
+
+  (q/text (str "Turn:" ) 10 30)
+  (with-redefs [PIECE_WIDTH 25]
+    (draw-static-piece (+ 25 (q/text-width "Turn:")) 25
+                       (if (= turn :black)
+                         (:dark-color state)
+                         (:light-color state))))
+  (q/fill 0)
+
+  (if (= :in-progress (:game-state state))
+    (when (:multiplayer state)
+      (if (:waiting state)
+        (q/text (str "Waiting for opponent to move") 150 30)
+        (q/text (str "Your turn") 150 30)))
     (q/text (name (:game-state state)) (/ SCREEN_SIZE 2) 30))
+
   (q/text (str "Time elapsed: " (let [total-seconds (:total-seconds state)
                                       minutes (int (/ total-seconds 60))
                                       seconds (int (mod total-seconds 60))]
                                   (format "%02d:%02d" minutes seconds)))
           10 (- SCREEN_SIZE 25))
-  (q/text (str "Turn timer: " (- TURN_TIMER_LIMIT (:last-turn-seconds state)))
-          (/ SCREEN_SIZE 2) (- SCREEN_SIZE 25))
+
+  (when-not (zero? (:timer state))
+    (q/text (str "Turn timer: " (- TURN_TIMER_LIMIT (:last-turn-seconds state)))
+            (/ SCREEN_SIZE 2) (- SCREEN_SIZE 25)))
+
   (q/text-size 10)
   (q/text "Hotkeys: p - pause game, q - quit to main menu" 10 (- SCREEN_SIZE 10))
+
   (q/text-size 30))
 
 (defn ^:private  get-quil-color [color]
@@ -102,14 +114,14 @@
 
 
 (defn draw-menu-item [x y text selected?]
-  (q/fill (get-quil-color :black)) ;;todo black boarder around text
+  (q/fill (get-quil-color :black))
   (when selected?
     (q/fill (get-quil-color :red)))
   (q/text text x y))
 
 (defn menu [{:keys [background-img current-menu] :as state}]
   (q/image background-img 0 0 SCREEN_SIZE SCREEN_SIZE) ;;todo rotate background or something cool
-  (q/text-size 40)
+  (q/text-size menu-text-size)
   (q/fill (get-quil-color :white))
   (q/rect 50 40 375 410)
   (doall (map-indexed

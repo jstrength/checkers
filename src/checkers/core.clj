@@ -6,15 +6,13 @@
             [checkers.logic :as logic]
             [checkers.utils :refer :all]
             [checkers.navigation :as nav]
-            [checkers.server :as server]
-            [clojure.java.io :as io])
-  (:import (java.util Date)
-           (java.net InetAddress)))
+            [checkers.server :as server])
+  (:import (java.util Date)))
 
 (def read-ch (async/chan 100))
 (def write-ch (async/chan 100))
 
-(def starting-state
+(def default-game-state
   {:board (vec (for [n (range 0 64)]
                  (let [{x :raw-x y :raw-y} (position-coordinates n)]
                    (if (if (odd? y) (even? x) (odd? x))
@@ -28,16 +26,20 @@
    :multiplayer false
    :turn :red
    :player :red
+   :current-menu nav/main-menu
+   :game-state :menu})
 
-   :dark-color :black
+(def default-settings-state
+  {:dark-color :black
    :light-color :red
    :dark-square-color :brown
    :light-square-color :white
    :sound-on? true
-   :ip ""
+   :timer 5
+   :ip ""})
 
-   :current-menu nav/main-menu
-   :game-state :menu})
+(def starting-state
+  (merge default-game-state default-settings-state))
 
 (def last-state (atom starting-state))
 (defn notify-opponent [{:keys [multiplayer] :as state}]
@@ -133,7 +135,7 @@
     (case (:key event)
       :p (assoc state :game-state :paused
                       :current-menu nav/pause-menu)
-      :q (merge (select-keys state [:background-img]) starting-state)
+      :q (merge state default-game-state)
       state)))
 
 (defn handle-multiplayer [{:keys [multiplayer turn player] :as state}]
@@ -152,24 +154,33 @@
 
 (defn handle-turn-timer [state]
   (if (>= (- (.getTime (Date.)) (:start-time state)) 1000)
-    (cond-> (-> state
-                (update :last-turn-seconds inc)
-                (update :total-seconds inc)
-                (assoc :start-time (.getTime (Date.))))
+    (cond->
+      (-> state
+          (update :total-seconds inc)
+          (assoc :start-time (.getTime (Date.))))
+
+      (not (zero? (:timer state)))
+      (update :last-turn-seconds inc)
+
       (zero? (- TURN_TIMER_LIMIT (:last-turn-seconds state)))
       (update :actions conj {:type :turn-switch}))
     state))
 
-(def prev-state (atom {}))
 (defn update-state [{:keys [game-state multiplayer actions] :as state}]
-  #_(when (not= @prev-state state)
-    (println state)
-    (reset! prev-state state))
-  (cond-> state
-    true notify-opponent
-    (= :in-progress game-state) handle-turn-timer
-    multiplayer handle-multiplayer
-    actions handle-actions))
+  (cond->
+    state
+
+    true
+    notify-opponent
+
+    (= :in-progress game-state)
+    handle-turn-timer
+
+    multiplayer
+    handle-multiplayer
+
+    actions
+    handle-actions))
 
 (defn draw-state [state]
   (if (#{:paused :menu} (:game-state state))
