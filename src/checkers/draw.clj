@@ -54,12 +54,9 @@
    (q/ellipse x y PIECE_WIDTH PIECE_WIDTH))
   ([x y color king]
    (draw-static-piece x y color)
-   (condp = king
-     BLACK_KING (do (q/fill 255 255 255)
-                    (q/text "K" (+ x -10) (+ y 10)) (q/fill 0))
-     RED_KING (do (q/fill 0)
-                  (q/text "K" (+ x -10) (+ y 10)))
-     nil)))
+   (when king
+     (q/fill (get-quil-color :white))
+     (q/text "K" (+ x -10) (+ y 10)))))
 
 (defn static-pieces! [{:keys [board selected] :as state}]
   (doall
@@ -71,7 +68,7 @@
               (+ x (/ SQUARE_WIDTH 2))
               (+ y (/ SQUARE_WIDTH 2))
               (if (#{BLACK BLACK_KING} b) (:dark-color state) (:light-color state))
-              b))))
+              (#{BLACK_KING RED_KING} b)))))
       board)))
 
 (defn draw-board! [{:keys [dark-square-color light-square-color] :as state}]
@@ -101,16 +98,10 @@
         (let [{:keys [x y]} (position-coordinates s)]
           (q/rect x y SQUARE_WIDTH SQUARE_WIDTH))))
     (q/stroke-weight 1)
-    ;; draw selected piece
-    (if (#{BLACK BLACK_KING} piece)
-      (q/fill (apply q/color (get dark-colors (:dark-color state))))
-      (q/fill (apply q/color (get light-colors (:light-color state)))))
-    (q/ellipse x y PIECE_WIDTH PIECE_WIDTH)
-
-    (condp = piece
-      BLACK_KING (do (q/fill 255 0 0) (q/text "K" (+ x -10) (+ y 10)) (q/fill 0))
-      RED_KING (do (q/fill 0) (q/text "K" (+ x -10) (+ y 10)) (q/fill 255 0 0))
-      nil)))
+    (draw-static-piece x y (if (#{BLACK BLACK_KING} piece)
+                             (:dark-color state)
+                             (:light-color state))
+                       (#{BLACK_KING RED_KING} piece))))
 
 
 (defn draw-menu-item [x y text selected?]

@@ -12,32 +12,6 @@
 (def read-ch (async/chan 100))
 (def write-ch (async/chan 100))
 
-(def default-game-state
-  {:board (vec (for [n (range 0 64)]
-                 (let [{x :raw-x y :raw-y} (position-coordinates n)]
-                   (if (if (odd? y) (even? x) (odd? x))
-                     (cond (< n (* 3 8)) BLACK
-                           (> n (- 63 (* 3 8))) RED
-                           :else EMPTY)
-                     EMPTY))))
-   :start-time 0
-   :last-turn-seconds 0
-   :total-seconds 0
-   :multiplayer false
-   :turn :red
-   :player :red
-   :current-menu nav/main-menu
-   :game-state :menu})
-
-(def default-settings-state
-  {:dark-color :black
-   :light-color :red
-   :dark-square-color :brown
-   :light-square-color :white
-   :sound-on? true
-   :timer 5
-   :ip ""})
-
 (def starting-state
   (merge default-game-state default-settings-state))
 
@@ -75,7 +49,9 @@
 
   ; setup function returns initial state. It contains
   ; circle color and position.
-  (let [starting-state (assoc starting-state :background-img (q/load-image "background.jpg"))] ;todo move into it's own resource-state instead?
+  (let [starting-state (assoc starting-state
+                         :current-menu nav/main-menu
+                         :background-img (q/load-image "background.jpg"))] ;todo move into it's own resource-state instead?
     (case (first args)
       "server" (do (server/server-channel read-ch write-ch)
                    (assoc starting-state :player :red
@@ -130,13 +106,20 @@
 
 (defn key-pressed [state event]
   (println event)
-  (if (#{:paused :menu} (:game-state state))
+  (cond
+    (#{:paused :menu} (:game-state state))
     (nav/handle-nav state event)
+
+    (= :in-progress (:game-state state))
     (case (:key event)
       :p (assoc state :game-state :paused
                       :current-menu nav/pause-menu)
       :q (merge state default-game-state)
-      state)))
+      state)
+
+    :else
+    (assoc state :current-menu nav/play-again-menu
+                 :game-state :menu)))
 
 (defn handle-multiplayer [{:keys [multiplayer turn player] :as state}]
   (if (and multiplayer (not= turn player))

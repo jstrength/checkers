@@ -240,9 +240,7 @@
               :action (fn [state _] (assoc state :current-menu join-game-menu))}}
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
-                 (condp = key-code
-                   enter-key (item-action-fn state event)
-                   state)))
+                 (item-action-fn state event)))
      :selected-item (first display-order)}))
 
 (def pause-menu
@@ -262,6 +260,27 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Quit" (selected-item? state :quit)))
               :action (fn [_ _] (System/exit 0))}}
+     :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
+               (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
+                 (if (= enter-key key-code)
+                   (item-action-fn state event)
+                   state)))
+     :selected-item (first display-order)}))
+
+(def play-again-menu
+  (let [display-order [:yes :no]]
+    {:display-order display-order
+     :items {:yes
+             {:draw (fn [state x y]
+                      (draw/draw-menu-item x y "Play again?" false)
+                      (draw/draw-menu-item x (+ y 100) "YES" (selected-item? state :yes)))
+              :action (fn [state _] ;todo use action system instead???
+                        (merge state default-game-state {:game-state :in-progress}))}
+             :no
+             {:draw (fn [state x y]
+                      (draw/draw-menu-item x y "No" (selected-item? state :no)))
+              :action (fn [state _]
+                        (merge state default-game-state {:current-menu main-menu}))}}
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
                  (if (= enter-key key-code)

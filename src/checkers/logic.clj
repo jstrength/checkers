@@ -135,19 +135,14 @@
     (not (:multiplayer state)) (update :board (comp vec reverse))))
 
 (defmethod perform-action :check-board-state [state action]
-  (-> state
-      (assoc :game-state
-             (cond ;todo game is tied
-               (not (seq (filter #{BLACK BLACK_KING} (:board state))))
-               (do (if (= :red (:player state))
-                     (audio/play-sound :won)
-                     (audio/play-sound :lost))
-                   :red-wins)
-               (not (seq (filter #{RED RED_KING} (:board state))))
-               (do (if (= :black (:player state))
-                     (audio/play-sound :won)
-                     (audio/play-sound :lost))
-                   :black-wins)
-               :else
-               :in-progress))))
+  (let [new-game-state (cond ;todo game is tied
+                         (not (seq (filter #{BLACK BLACK_KING} (:board state)))) :red-wins
+                         (not (seq (filter #{RED RED_KING} (:board state)))) :black-wins
+                         :else :in-progress)]
+    (cond-> (assoc state :game-state new-game-state)
+      (#{:red-wins :black-wins} new-game-state)
+      (update :actions conj {:type :play-sound :clip
+                             (if (= :red (:player state))
+                               (if (= new-game-state :red-wins) :won :lost)
+                               (if (= new-game-state :black-wins) :won :lost))}))))
 

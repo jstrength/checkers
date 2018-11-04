@@ -46,3 +46,30 @@
 (defn get-nth [board n]
   (when (>= 63 n 0)
     (nth board n)))
+
+(def default-game-state
+  {:board (vec (for [n (range 0 64)]
+                 (let [{x :raw-x y :raw-y} (position-coordinates n)]
+                   (if (if (odd? y) (even? x) (odd? x))
+                     (cond #_(< n (* 3 8)) (= n 1) BLACK
+                           #_(> n (- 63 (* 3 8))) (= n 63) RED
+                           :else EMPTY)
+                     EMPTY))))
+   :start-time 0
+   :last-turn-seconds 0
+   :total-seconds 0
+   :multiplayer false
+   :turn :red
+   :player :red
+   ;:current-menu nil ;;added in setup
+   ;:background-img nil ;;added in setup
+   :game-state :menu})
+
+(def default-settings-state
+  {:dark-color :black
+   :light-color :red
+   :dark-square-color :brown
+   :light-square-color :white
+   :sound-on? true
+   :timer 5
+   :ip ""})
