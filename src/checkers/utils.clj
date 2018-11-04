@@ -47,12 +47,22 @@
   (when (>= 63 n 0)
     (nth board n)))
 
+(defn get-alpha [player n]
+  (str (nth (if (= :red player) "abcdefgh" "hgfedcba") n)))
+
+(defn get-numeric [player n]
+  (str (if (= :red player) (inc (- 7 n)) (inc n))))
+
+(defn get-algebraic-notation [player square]
+  (let [{x :raw-x y :raw-y} (position-coordinates square)]
+    (str (get-alpha player x) (get-numeric player y))))
+
 (def default-game-state
   {:board (vec (for [n (range 0 64)]
                  (let [{x :raw-x y :raw-y} (position-coordinates n)]
                    (if (if (odd? y) (even? x) (odd? x))
-                     (cond #_(< n (* 3 8)) (= n 1) BLACK
-                           #_(> n (- 63 (* 3 8))) (= n 63) RED
+                     (cond (< n (* 3 8)) BLACK
+                           (> n (- 63 (* 3 8))) RED
                            :else EMPTY)
                      EMPTY))))
    :start-time 0
@@ -71,5 +81,5 @@
    :dark-square-color :brown
    :light-square-color :white
    :sound-on? true
-   :timer 5
+   :timer 0
    :ip ""})

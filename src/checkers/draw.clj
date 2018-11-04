@@ -11,9 +11,9 @@
   (q/text-size 20)
   (q/fill 0)
 
-  (q/text (str "Turn:" ) 10 30)
+  (q/text (str "Turn:" ) 10 20)
   (with-redefs [PIECE_WIDTH 25]
-    (draw-static-piece (+ 25 (q/text-width "Turn:")) 25
+    (draw-static-piece (+ 25 (q/text-width "Turn:")) 15
                        (if (= turn :black)
                          (:dark-color state)
                          (:light-color state))))
@@ -71,13 +71,20 @@
               (#{BLACK_KING RED_KING} b)))))
       board)))
 
-(defn draw-board! [{:keys [dark-square-color light-square-color] :as state}]
+(defn draw-board! [{:keys [dark-square-color light-square-color player] :as state}]
   (q/background 255)
   (q/stroke 0)
+
+  (let [text-size 20]
+    (q/text-size text-size)
+    (doseq [n (range 8)]
+      (q/text (str (get-numeric player n)) (- MARGIN 15) (+ (* n SQUARE_WIDTH) (+ (* 1.5 SQUARE_WIDTH) (/ text-size 4))))
+      (q/text (get-alpha player n) (+ (* n SQUARE_WIDTH) (- (* SQUARE_WIDTH 1.5) (/ text-size 4))) (- MARGIN 5))))
 
   (doseq [n (range 9)]
     (q/line MARGIN (+ MARGIN (* SQUARE_WIDTH n)) (+ BOARD_WIDTH MARGIN) (+ MARGIN (* SQUARE_WIDTH n)))
     (q/line (+ MARGIN (* SQUARE_WIDTH n)) MARGIN (+ MARGIN (* SQUARE_WIDTH n)) (+ BOARD_WIDTH MARGIN)))
+
   (doseq [{:keys [x y raw-x raw-y]} position-coordinates]
     (if (if (odd? raw-y) (even? raw-x) (odd? raw-x))
       (do

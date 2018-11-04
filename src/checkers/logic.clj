@@ -1,7 +1,6 @@
 (ns checkers.logic
   (:require [checkers.utils :refer :all]
-            [checkers.audio :as audio])
-  (:import (java.util Date)))
+            [checkers.audio :as audio]))
 
 (defn calc-square-at [x y]
   (+ (quot (- x MARGIN) SQUARE_WIDTH)
