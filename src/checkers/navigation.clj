@@ -1,7 +1,8 @@
 (ns checkers.navigation
   (:require [checkers.utils :refer :all]
             [quil.core :as q]
-            [checkers.draw :as draw])
+            [checkers.draw :as draw]
+            [checkers.server :as server])
   (:import (java.net InetAddress)
            (java.util Date)))
 
@@ -162,7 +163,7 @@
      :selected-item (first display-order)}))
 
 (def host-game-menu
-  (let [display-order [:back :your-ip :port]]
+  (let [display-order [:back :your-ip :port :host]]
     {:display-order display-order
      :items {:back
              {:draw
@@ -181,14 +182,22 @@
              :port
              {:draw
               (fn [state x y]
-                (draw/draw-menu-item x y (format "Port: %s" port) (selected-item? state :port)))}}
+                (draw/draw-menu-item x y (format "Port:%s" port) (selected-item? state :port)))}
+             :host
+             {:draw (fn [state x y]
+                      (draw/draw-menu-item x y "Host!" (selected-item? state :host)))
+              :action (fn [state event]
+                        ;;todo another game-state called waiting on opppoent to connect?
+                        (server/host-game! state)
+                        )}
+             }
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
                  (item-action-fn state event)))
      :selected-item (first display-order)}))
 
 (def join-game-menu
-  (let [display-order [:back :ip :port]]
+  (let [display-order [:back :ip :port :join]]
     {:display-order display-order
      :items {:back
              {:draw
@@ -212,7 +221,15 @@
              :port
              {:draw
               (fn [state x y]
-                (draw/draw-menu-item x y (format "Port: %s" port) (selected-item? state :port)))}}
+                (draw/draw-menu-item x y (format "Port: %s" port) (selected-item? state :port)))}
+             :join
+             {:draw
+              (fn [state x y]
+                (draw/draw-menu-item x y "Join!" (selected-item? state :join)))
+              :action (fn [state event]
+                        (server/join-game! state)
+                        ;;todo start game if we can connect, else show error message
+                        )}}
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
                  (item-action-fn state event)))

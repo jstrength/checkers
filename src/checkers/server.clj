@@ -1,11 +1,21 @@
 (ns checkers.server
-  (:require [clojure.core.async :as async :refer [go go-loop <! put!]]
-            [checkers.utils :refer :all])
+  (:require [checkers.utils :refer :all]
+            [clojure.edn :as edn])
   (:import (java.net InetSocketAddress ConnectException StandardSocketOptions)
            (java.nio.channels ServerSocketChannel SocketChannel)
-           (java.nio ByteBuffer)))
+           (java.nio ByteBuffer)
+           (java.io IOException)))
 
-(def BUFFER_SIZE 1024)
+(defonce server-chan (atom nil))
+(defonce sock-chan (atom nil))
+(def BUFFER_SIZE (int 64))
+
+(defn ^:private set-socket-config [socket]
+  (doto socket
+    (.configureBlocking false)
+    (.setOption StandardSocketOptions/SO_KEEPALIVE true)
+    (.setOption StandardSocketOptions/SO_SNDBUF BUFFER_SIZE)
+    (.setOption StandardSocketOptions/SO_RCVBUF BUFFER_SIZE)))
 
 (defn byte-buffer->msg [buffer]
   (clojure.string/trim (apply str (map char (.array buffer)))))
@@ -13,66 +23,80 @@
 (defn msg->byte-buffer [msg]
   (ByteBuffer/wrap (byte-array (map byte (subs (format (str "%" BUFFER_SIZE "s") msg) 0 BUFFER_SIZE)))))
 
-(defn server-channel [read-ch write-ch]
-  (go
-    (let [server-chan (doto (ServerSocketChannel/open)
-                        (.setOption StandardSocketOptions/SO_REUSEADDR true)
-                        (.bind (InetSocketAddress. port)))
-          _ (println "Waiting on client to connect...")
-          sock-chan (.accept server-chan)]
-      (println "Client connected!")
-      (go-loop []
-        (println "Server reading")
-        (let [buffer (ByteBuffer/allocate BUFFER_SIZE)]
-          (.read sock-chan buffer)
-          (let [msg (byte-buffer->msg buffer)]
-            (println "Server read: " msg)
-            (put! read-ch msg)))
-        (when (.isConnected sock-chan)
-          (recur)))
-      (go-loop []
-        (let [msg (<! write-ch)]
-          (println "Server write: " msg)
-          (.write sock-chan (msg->byte-buffer msg))
-          (if (= "exit" msg)
-            (do (.close sock-chan) (.close server-chan))
-            (when (.isConnected sock-chan)
-              (recur))))))))
+(defn ^:private close-connection! []
+  (when @server-chan
+    (.close @server-chan)
+    (reset! server-chan nil))
+  (when @sock-chan
+    (.close @sock-chan)
+    (reset! sock-chan nil)))
 
-(defn client-channel [host read-ch write-ch]
+(defn ^:private read-msgs! []
+  (loop [msgs []]
+    (let [buffer (ByteBuffer/allocate BUFFER_SIZE)]
+      (if (pos? (.read @sock-chan buffer))
+        (recur (conj msgs (byte-buffer->msg buffer)))
+        msgs))))
+
+(defn ^:private write-msg! [msg]
+  (println "write: " msg)
   (try
-    (let [sock-chan (SocketChannel/open (InetSocketAddress. ^String host ^Integer port))]
-      (println "Connected")
-      (go-loop []
-        (println "Client reading")
-        (let [buffer (ByteBuffer/allocate BUFFER_SIZE)]
-          (.read sock-chan buffer)
-          (let [msg (byte-buffer->msg buffer)]
-            (println "Client read: " msg)
-            (put! read-ch msg)))
-        (when (.isConnected sock-chan)
-          (recur)))
-      (go-loop []
-        (let [msg (<! write-ch)]
-          (println "Client write: " msg)
-          (.write sock-chan (msg->byte-buffer msg)))
-        (when (.isConnected sock-chan)
-          (recur))))
+    (.write @sock-chan (msg->byte-buffer msg))
+    (catch IOException e (do (println (ex-data e))
+                             (close-connection!)))))
+
+(defn is-connected? []
+  (and (not (nil? @sock-chan))
+       (.isOpen @sock-chan)))
+
+(defn start-server! []
+  (reset! server-chan (doto (ServerSocketChannel/open) (.bind (InetSocketAddress. port))))
+  (println "Waiting on client to connect...")
+  (future (reset! sock-chan (set-socket-config (.accept @server-chan)))
+          (println "Client connected!")))
+
+(defn connect-to-server! [host]
+  (try
+    (reset! sock-chan (set-socket-config (SocketChannel/open (InetSocketAddress. ^String host ^Integer port))))
+    (println "Connected")
     (catch ConnectException e (println "Unable to connect to" port))))
 
+(defn host-game! [state]
+  (start-server!)
+  (assoc state :player :red :multiplayer true :hosting? true))
+
+(defn join-game! [state]
+  (connect-to-server! (:ip state))
+  (assoc state :player :black :multiplayer true :hosting? false))
+
+(defn send-move! [player release-square square]
+  (let [msg {:move {:from (get-algebraic-notation player square)
+                    :to (get-algebraic-notation player release-square)}}]
+    ))
+
+(defmulti handle-msg (fn [state {:keys [type]}] type))
+(defmethod handle-msg :moved [state msg] state)
+(defmethod handle-msg :quit [state _]
+  (reset! sock-chan nil)
+  (assoc state :game-state :opponent-resigned))
+
+(defn update-state [state]
+  (reduce
+    handle-msg
+    (read-msgs!)
+    state))
+
 (comment
-  (def s-read-c (async/chan))
-  (def s-write-c (async/chan))
-  (def c-read-c (async/chan))
-  (def c-write-c (async/chan))
-  (server-channel s-read-c s-write-c)
-  (client-channel c-read-c c-write-c)
-  (async/put! c-write-c "YI! wow hi :)")
-  (async/put! s-write-c "hey guy :)")
-  (go (<! s-read-c))
-  (async/put!)
-  (async/take! s-read-c println)
-  async/>!!
-  async/>!
+  (start-server!)
+  (connect-to-server! "localhost")
+  (is-connected?)
+  (write-msg! "HELLO :)")
+  (write-msg! "OMG")
+  (write-msg! "OKAYLY DOKALY")
+  (write-msg! "HELLO :)")
+  (write-msg! {:msg "WOW"})
+  (read-msgs!)
+
+  (close-connection!)
 
   )

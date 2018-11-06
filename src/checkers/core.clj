@@ -1,7 +1,6 @@
 (ns checkers.core
   (:require [quil.core :as q]
             [quil.middleware :as m]
-            [clojure.core.async :as async]
             [checkers.draw :as draw]
             [checkers.logic :as logic]
             [checkers.utils :refer :all]
@@ -9,34 +8,11 @@
             [checkers.server :as server])
   (:import (java.util Date)))
 
-(def read-ch (async/chan 100))
-(def write-ch (async/chan 100))
-
 (def starting-state
   (merge default-game-state default-settings-state))
 
-(def last-state (atom starting-state))
-(defn notify-opponent [{:keys [multiplayer] :as state}]
-  (when multiplayer
-    (println (pr-str (update state :board (comp vec reverse))))
-    (if (not= @last-state state)
-      (reset! last-state state)
-      (async/put! write-ch (pr-str (update state :board (comp vec reverse))))))
-  state)
-
-(defn read-opponent-msg [{:keys [multiplayer player turn] :as state}]
-  (when (and multiplayer (not= player turn))
-    (when-let [msg (async/poll! read-ch)]
-      ;(println "msg:" msg)
-      (let [new-state (read-string msg)]
-        ;(println new-state)
-        (assoc new-state :player player :waiting (= turn (:turn new-state)))))))
-
 (defn on-close [e]
-  (println e)
-  (try
-    (async/go (async/>! write-ch "exit"))
-    (catch Exception _ nil)))
+  (println e))
 
 (defn setup [args]
   ; Set frame rate to 30 frames per second.
@@ -49,18 +25,10 @@
 
   ; setup function returns initial state. It contains
   ; circle color and position.
-  (let [starting-state (assoc starting-state
-                         :current-menu nav/main-menu
-                         :background-img (q/load-image "background.jpg"))] ;todo move into it's own resource-state instead?
-    (case (first args)
-      "server" (do (server/server-channel read-ch write-ch)
-                   (assoc starting-state :player :red
-                                         :multiplayer true))
-      "client" (do (server/client-channel (second args) read-ch write-ch)
-                   (-> starting-state
-                       (update :board (comp vec reverse))
-                       (assoc :player :black :multiplayer true)))
-      starting-state)))
+  ;todo move into it's own resource-state instead?
+  (assoc starting-state
+    :current-menu nav/main-menu
+    :background-img (q/load-image "background.jpg")))
 
 (defn mouse-pressed [{:keys [game-state turn board jumping-piece] :as state} {:keys [x y] :as event}]
   (if (and (= game-state :in-progress)
@@ -105,7 +73,8 @@
     state))
 
 (defn key-pressed [state event]
-  (println event)
+  ;(println event)
+  ;(server/send-move! :red 10 2)
   (cond
     (#{:paused :menu} (:game-state state))
     (nav/handle-nav state event)
@@ -120,11 +89,6 @@
     :else
     (assoc state :current-menu nav/play-again-menu
                  :game-state :menu)))
-
-(defn handle-multiplayer [{:keys [multiplayer turn player] :as state}]
-  (if (and multiplayer (not= turn player))
-    (or (read-opponent-msg state) state)
-    (dissoc state :waiting)))
 
 (defn handle-actions [{:keys [actions] :as state}]
   ;(println state)
@@ -153,14 +117,11 @@
   (cond->
     state
 
-    true
-    notify-opponent
-
     (= :in-progress game-state)
     handle-turn-timer
 
     multiplayer
-    handle-multiplayer
+    server/update-state
 
     actions
     handle-actions))

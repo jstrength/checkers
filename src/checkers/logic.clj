@@ -1,6 +1,7 @@
 (ns checkers.logic
   (:require [checkers.utils :refer :all]
-            [checkers.audio :as audio]))
+            [checkers.audio :as audio]
+            [checkers.server :as server]))
 
 (defn calc-square-at [x y]
   (+ (quot (- x MARGIN) SQUARE_WIDTH)
@@ -97,9 +98,10 @@
 (defmulti perform-action
           (fn [state {:keys [type]}] type))
 
-(defmethod perform-action :move [state {:keys [release-square piece square]}]
-  ;do move
-  ;conj action to change players
+(defmethod perform-action :move [{:keys [player] :as state} {:keys [release-square piece square]}]
+  (when (:multiplayer state)
+    (server/send-move! player release-square square))
+
   (-> state
       (assoc-in [:board release-square]
                 (if (< release-square 8)
