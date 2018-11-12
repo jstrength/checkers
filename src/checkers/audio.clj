@@ -3,10 +3,10 @@
   (:import (javax.sound.sampled AudioSystem)
            (java.io File)))
 
-(def sounds {:lost "sounds/game-lost.wav"
-             :won "sounds/game-won.wav"
-             :move "sounds/move.wav"
-             :jump "sounds/jump.wav"})
+(def sounds {::lost "sounds/game-lost.wav"
+             ::won "sounds/game-won.wav"
+             ::move "sounds/move.wav"
+             ::jump "sounds/jump.wav"})
 
 (defn play-sound [sound]
   (if-let [clip (get sounds sound)]

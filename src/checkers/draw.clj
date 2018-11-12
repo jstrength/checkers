@@ -7,7 +7,7 @@
 
 (declare draw-static-piece)
 
-(defn game-text! [{:keys [turn] :as state}]
+(defn game-text! [{:keys [player turn] :as state}]
   (q/text-size 20)
   (q/fill 0)
 
@@ -19,12 +19,21 @@
                          (:light-color state))))
   (q/fill 0)
 
-  (if (= :in-progress (:game-state state))
+  (case (:game-state state)
+    :in-progress
     (when (:multiplayer state)
-      (if (:waiting state)
-        (q/text (str "Waiting for opponent to move") 150 30)
-        (q/text (str "Your turn") 150 30)))
-    (q/text (name (:game-state state)) (/ SCREEN_SIZE 2) 30))
+      (if (= player turn)
+        (q/text (str "Your turn") 150 20)
+        (q/text (str "Waiting for opponent to move") 150 20)))
+    :waiting-for-opponent
+    (q/text "Waiting for opponent to connect" (/ SCREEN_SIZE 4) 20)
+    :red-wins
+    (q/text "Red wins!" (/ SCREEN_SIZE 2) 20)
+    :black-wins
+    (q/text "Black wins!" (/ SCREEN_SIZE 2) 20)
+    :tied
+    (q/text "Game tied." (/ SCREEN_SIZE 2) 20)
+    nil #_(q/text (name (:game-state state)) (/ SCREEN_SIZE 2) 20))
 
   (q/text (str "Time elapsed: " (let [total-seconds (:total-seconds state)
                                       minutes (int (/ total-seconds 60))
@@ -38,6 +47,10 @@
 
   (q/text-size 10)
   (q/text "Hotkeys: p - pause game, q - quit to main menu" 10 (- SCREEN_SIZE 10))
+
+  (when (:hosting? state)
+    (q/text-size 15)
+    (q/text (str "Hosting:" your-ip) (/ SCREEN_SIZE 1.6) (- SCREEN_SIZE 10)))
 
   (q/text-size 30))
 

@@ -3,8 +3,7 @@
             [quil.core :as q]
             [checkers.draw :as draw]
             [checkers.server :as server])
-  (:import (java.net InetAddress)
-           (java.util Date)))
+  (:import (java.util Date)))
 
 (defn get-next-item [item items]
   (nth items (mod (inc (.indexOf items item)) (count items))))
@@ -57,13 +56,14 @@
                 (draw/draw-menu-item x y back-text (selected-item? state :back)))
               :action
               (fn [state {:keys [key-code] :as event}]
-                ;todo any key triggers this guy
-                (assoc state :current-menu
-                             (assoc
-                               (if (= :paused (:game-state state))
-                                 pause-menu
-                                 main-menu)
-                               :selected-item :settings)))}
+                (cond-> state
+                  (#{enter-key left-key} key-code)
+                  (assoc :current-menu
+                         (assoc
+                           (if (= :paused (:game-state state))
+                             pause-menu
+                             main-menu)
+                           :selected-item :settings))))}
              :timer
              {:draw (fn [state x y]
                       (draw/draw-menu-item
@@ -85,7 +85,7 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item
                         x y
-                        (format "Sound: %s" (if (:sound-on? state) "ON" "OFF")) ;todo better key handling
+                        (format "Sound: %s" (if (:sound-on? state) "ON" "OFF"))
                         (selected-item? state :sound)))
               :action (fn [state _] (update state :sound-on? not))}
              :board
@@ -117,46 +117,50 @@
                       (draw/draw-menu-item x y "Dark:" (selected-item? state :dark-piece))
                       (draw/draw-static-piece (+ x (q/text-width "Dark: ")) (- y 10) (:dark-color state)))
               :action (fn [state {:keys [key-code]}]
-                        (update state :dark-color
-                                (condp = key-code
-                                  left-key get-previous-item
-                                  right-key get-next-item
-                                  (fn [color _] color)) ;todo fix or remove
-                                (vec (keys dark-colors))))}
+                        (cond-> state
+                          (#{left-key right-key} key-code)
+                          (update :dark-color
+                                  (if (= key-code left-key)
+                                    get-previous-item
+                                    get-next-item)
+                                  (vec (keys dark-colors)))))}
              :light-piece
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Light:" (selected-item? state :light-piece))
                       (draw/draw-static-piece (+ x (q/text-width "Light: ")) (- y 10) (:light-color state)))
               :action (fn [state {:keys [key-code]}]
-                        (update state :light-color
-                                (condp = key-code
-                                  left-key get-previous-item
-                                  right-key get-next-item
-                                  (fn [c _] c))
-                                (vec (keys light-colors))))}
+                        (cond-> state
+                          (#{left-key right-key} key-code)
+                          (update :light-color
+                                  (if (= key-code left-key)
+                                    get-previous-item
+                                    get-next-item)
+                                  (vec (keys light-colors)))))}
              :dark-square
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Dark:" (selected-item? state :dark-square))
                       (draw/draw-square (+ x (q/text-width "Dark:")) (- y (- SQUARE_WIDTH 15)) (:dark-square-color state)))
               :action (fn [state {:keys [key-code]}]
-                        (update state :dark-square-color
-                                (condp = key-code
-                                  left-key get-previous-item
-                                  right-key get-next-item
-                                  (fn [c _] c)) ;todo fix or remove
-                                (vec (keys dark-colors))))}
+                        (cond-> state
+                          (#{left-key right-key} key-code)
+                          (update :dark-square-color
+                                  (if (= key-code left-key)
+                                    get-previous-item
+                                    get-next-item)
+                                  (vec (keys dark-colors)))))}
 
              :light-square
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Light:" (selected-item? state :light-square))
                       (draw/draw-square (+ x (q/text-width "Light:")) (- y (- SQUARE_WIDTH 15)) (:light-square-color state)))
               :action (fn [state {:keys [key-code]}]
-                        (update state :light-square-color
-                                (condp = key-code
-                                  left-key get-previous-item
-                                  right-key get-next-item
-                                  (fn [c _] c))
-                                (vec (keys light-colors))))}}
+                        (cond-> state
+                          (#{left-key right-key} key-code)
+                          (update :light-square-color
+                                  (if (= key-code left-key)
+                                    get-previous-item
+                                    get-next-item)
+                                  (vec (keys light-colors)))))}}
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
                  (item-action-fn state event)))
@@ -177,7 +181,7 @@
              :your-ip
              {:draw
               (fn [state x y]
-                (draw/draw-menu-item x (- y 50) (format "Your IP:\n%s" (.getHostAddress (InetAddress/getLocalHost)))
+                (draw/draw-menu-item x (- y 50) (format "Your IP:\n%s" your-ip)
                                      (selected-item? state :your-ip)))}
              :port
              {:draw
@@ -187,10 +191,7 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Host!" (selected-item? state :host)))
               :action (fn [state event]
-                        ;;todo another game-state called waiting on opppoent to connect?
-                        (server/host-game! state)
-                        )}
-             }
+                        (server/host-game! state))}}
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
                  (item-action-fn state event)))
@@ -305,10 +306,32 @@
                    state)))
      :selected-item (first display-order)}))
 
-(defn handle-nav [{:keys [current-menu] :as state} event]
-  (condp = (:key-code event)
-    up-key
-    (update-in state [:current-menu :selected-item] get-previous-item (:display-order current-menu))
-    down-key
-    (update-in state [:current-menu :selected-item] get-next-item (:display-order current-menu))
-    ((:action current-menu) state event)))
+(def player-disconnected-menu
+  (let [display-order [:ok]]
+    {:display-order display-order
+     :items {:ok
+             {:draw (fn [state x y]
+                      (draw/draw-menu-item x y "Player\ndisconnected." false)
+                      (draw/draw-menu-item (+ 20 x) (+ y 200) "Ok" (selected-item? state :ok)))}}
+     :action (fn [state {:keys [key-code]}]
+               (when (= enter-key key-code)
+                 (merge state default-game-state {:game-state :menu :current-menu main-menu})))
+     :selected-item (first display-order)}))
+
+(def menu-kw->menu
+  {:main-menu main-menu
+   :player-disconnected-menu player-disconnected-menu
+   })
+
+(defn handle-nav [{:keys [current-menu new-menu] :as state} event]
+  (let [state (if new-menu
+                (-> state
+                    (dissoc :new-menu)
+                    (assoc :current-menu (menu-kw->menu new-menu)))
+                state)]
+    (condp = (:key-code event)
+      up-key
+      (update-in state [:current-menu :selected-item] get-previous-item (:display-order current-menu))
+      down-key
+      (update-in state [:current-menu :selected-item] get-next-item (:display-order current-menu))
+      ((:action current-menu) state event))))

@@ -1,4 +1,5 @@
-(ns checkers.utils)
+(ns checkers.utils
+  (:import (java.net InetAddress)))
 
 ;todo don't upper case _ constants, just regular cabab case
 (def SCREEN_SIZE 500)
@@ -35,6 +36,7 @@
 (def enter-key 10)
 
 (def port 1337)
+(def your-ip (.getHostAddress (InetAddress/getLocalHost)))
 
 (def position-coordinates
   (vec (for [y (range 8)
@@ -61,8 +63,8 @@
   {:board (vec (for [n (range 0 64)]
                  (let [{x :raw-x y :raw-y} (position-coordinates n)]
                    (if (if (odd? y) (even? x) (odd? x))
-                     (cond (< n (* 3 8)) BLACK
-                           (> n (- 63 (* 3 8))) RED
+                     (cond (< n (* 3 8))  #_(< n 8) BLACK
+                           (> n (- 63 (* 3 8))) #_(> n (- 63 8)) RED
                            :else EMPTY)
                      EMPTY))))
    :start-time 0

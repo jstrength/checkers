@@ -1,7 +1,6 @@
 (ns checkers.logic
   (:require [checkers.utils :refer :all]
-            [checkers.audio :as audio]
-            [checkers.server :as server]))
+            [checkers.audio :as audio]))
 
 (defn calc-square-at [x y]
   (+ (quot (- x MARGIN) SQUARE_WIDTH)
@@ -76,6 +75,16 @@
          (remove nil?)
          (seq))))
 
+(defn is-game-tied? [board turn]
+  (loop [[n & r] (range 64)]
+    (cond
+      (and
+        (contains? (if (= :black turn) #{BLACK BLACK_KING} #{RED RED_KING}) (get-nth board n))
+        (or (get-valid-moves board n)
+            (get-valid-jumps {:board board :turn turn} n))) false
+      (empty? r) true
+      :else (recur r))))
+
 (defn is-playable-piece? [{:keys [board turn player multiplayer] :as state} pos]
   (and (if multiplayer (= turn player) true)
        (or
@@ -95,13 +104,9 @@
     ;(println "JUMPED: " s e (/ (+ s e) 2))
     (/ (+ s e) 2)))
 
-(defmulti perform-action
-          (fn [state {:keys [type]}] type))
+(defmulti perform-action (fn [_ [k _]] k))
 
-(defmethod perform-action :move [{:keys [player] :as state} {:keys [release-square piece square]}]
-  (when (:multiplayer state)
-    (server/send-move! player release-square square))
-
+(defmethod perform-action :move [state [_ {:keys [release-square piece square]}]]
   (-> state
       (assoc-in [:board release-square]
                 (if (< release-square 8)
@@ -110,40 +115,49 @@
       (assoc-in [:board square] EMPTY)
       (update :actions (fn [actions]
                          (if-let [jumped-square (find-jumped-square square release-square)]
-                           (conj actions {:type :jump :jumped-square jumped-square :release-square release-square})
-                           (conj actions {:type :turn-switch} {:type :play-sound :clip :move}))))
+                           (conj actions [:jump {:jumped-square jumped-square :release-square release-square}])
+                           (conj actions [:turn-switch] [:play-sound {:clip ::audio/move}]))))
       (dissoc :selected :jumping-piece)))
 
-(defmethod perform-action :jump [state {:keys [release-square jumped-square]}]
+(defmethod perform-action :jump [state [_ {:keys [release-square jumped-square]}]]
   (let [new-state (-> state
-                      (update :actions conj {:type :play-sound :clip :jump})
+                      (update :actions conj [:play-sound {:clip ::audio/jump}])
                       (assoc-in [:board jumped-square] EMPTY))]
     (if (seq (get-valid-jumps new-state release-square))
       (assoc new-state :jumping-piece release-square)
-      (update new-state :actions conj {:type :turn-switch}))))
+      (update new-state :actions conj [:turn-switch]))))
 
-(defmethod perform-action :play-sound [state action]
+(defmethod perform-action :play-sound [state [_ action]]
   (when (:sound-on? state)
     (audio/play-sound (:clip action)))
   state)
 
-(defmethod perform-action :turn-switch [state action]
+(defmethod perform-action :turn-switch [state _]
   (cond-> state
-    true (update :actions conj {:type :check-board-state})
+    true (update :actions conj [:check-board-state])
     true (update :turn #(if (= % :red) :black :red))
     true (assoc :last-turn-seconds 0)
     true (dissoc :selected)
     (not (:multiplayer state)) (update :board (comp vec reverse))))
 
-(defmethod perform-action :check-board-state [state action]
-  (let [new-game-state (cond ;todo game is tied
-                         (not (seq (filter #{BLACK BLACK_KING} (:board state)))) :red-wins
-                         (not (seq (filter #{RED RED_KING} (:board state)))) :black-wins
+(defmethod perform-action :check-board-state [{:keys [board turn player] :as state} _]
+  (let [new-game-state (cond
+                         (not (seq (filter #{BLACK BLACK_KING} board))) :red-wins
+                         (not (seq (filter #{RED RED_KING} board))) :black-wins
+                         (and (= turn player) (is-game-tied? board turn)) :tied
                          :else :in-progress)]
     (cond-> (assoc state :game-state new-game-state)
-      (#{:red-wins :black-wins} new-game-state)
-      (update :actions conj {:type :play-sound :clip
-                             (if (= :red (:player state))
-                               (if (= new-game-state :red-wins) :won :lost)
-                               (if (= new-game-state :black-wins) :won :lost))}))))
+      (#{:red-wins :black-wins :tied} new-game-state)
+      (update :actions conj [:play-sound
+                             {:clip
+                              (if (= :red (:player state))
+                                (if (= new-game-state :red-wins) ::audio/won ::audio/lost)
+                                (if (= new-game-state :black-wins) ::audio/won ::audio/lost))}]))))
 
+(defmethod perform-action :reset-game [state _]
+  (println "reset game")
+  (-> state
+      (merge default-game-state)
+      (assoc :set-menu :main-menu)))
+
+(defmethod perform-action :default [state _] state)

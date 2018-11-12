@@ -12,6 +12,7 @@
   (merge default-game-state default-settings-state))
 
 (defn on-close [e]
+  (server/close-connection!)
   (println e))
 
 (defn setup [args]
@@ -59,8 +60,9 @@
                (< MARGIN y (+ BOARD_WIDTH MARGIN)))
         ;; dropped piece is on valid square within bounds of board
         (-> state
-            (update :actions conj {:type :move :release-square release-square
-                                   :square square :piece piece}))
+            (update :actions conj [:move
+                                   {:release-square release-square
+                                    :square square :piece piece}]))
         ;; reset piece to original square
         (-> state
             ;(assoc-in [:board square] piece)
@@ -83,17 +85,21 @@
     (case (:key event)
       :p (assoc state :game-state :paused
                       :current-menu nav/pause-menu)
-      :q (merge state default-game-state)
+      :q (do (when (:multiplayer state)
+               (server/write-msg ::server/quit))
+             (update state :actions conj [:reset-game]))
       state)
 
     :else
     (assoc state :current-menu nav/play-again-menu
                  :game-state :menu)))
 
-(defn handle-actions [{:keys [actions] :as state}]
+(defn handle-actions [{:keys [actions multiplayer turn player] :as state}]
   ;(println state)
   (reduce
     (fn [s action]
+      (when (and multiplayer (= turn player))
+        (server/perform-action s action))
       (logic/perform-action s action))
     (dissoc state :actions)
     (distinct actions)) ;todo why need distinct?/?
@@ -110,7 +116,7 @@
       (update :last-turn-seconds inc)
 
       (zero? (- TURN_TIMER_LIMIT (:last-turn-seconds state)))
-      (update :actions conj {:type :turn-switch}))
+      (update :actions conj [:turn-switch]))
     state))
 
 (defn update-state [{:keys [game-state multiplayer actions] :as state}]
@@ -122,6 +128,9 @@
 
     multiplayer
     server/update-state
+
+    (and multiplayer (not= :waiting-for-opponent game-state) (not (server/is-connected?)))
+    (update :actions conj [:opponent-disconnected])
 
     actions
     handle-actions))
