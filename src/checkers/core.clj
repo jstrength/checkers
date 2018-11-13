@@ -1,12 +1,15 @@
 (ns checkers.core
+  (:gen-class)
   (:require [quil.core :as q]
             [quil.middleware :as m]
             [checkers.draw :as draw]
             [checkers.logic :as logic]
             [checkers.utils :refer :all]
             [checkers.navigation :as nav]
-            [checkers.server :as server])
-  (:import (java.util Date)))
+            [checkers.server :as server]
+            [clojure.java.io :as io])
+  (:import (java.util Date)
+           (java.net URL)))
 
 (def starting-state
   (merge default-game-state default-settings-state))
@@ -21,7 +24,6 @@
   (q/text-size 30)
   (q/smooth)
 
-  ;(q/text-font (q/create-font "AllStarResort.ttf" 50 true))
   (q/text-font (q/create-font "AndaleMono" 50))
 
   ; setup function returns initial state. It contains
