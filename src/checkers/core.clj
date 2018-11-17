@@ -6,10 +6,8 @@
             [checkers.logic :as logic]
             [checkers.utils :refer :all]
             [checkers.navigation :as nav]
-            [checkers.server :as server]
-            [clojure.java.io :as io])
-  (:import (java.util Date)
-           (java.net URL)))
+            [checkers.server :as server])
+  (:import (java.util Date)))
 
 (def starting-state
   (merge default-game-state default-settings-state))
@@ -75,6 +73,18 @@
   (if selected
     (update state :selected assoc :x x :y y)
     state))
+
+(defn mouse-moved [{:keys [game-state] :as state} {:keys [x y] :as event}]
+  (cond-> state
+    (#{:paused :menu} game-state)
+    (do ;(println event)
+        (nav/update-selected-item state event))))
+
+(defn mouse-clicked [{:keys [game-state] :as state} {:keys [x y] :as event}]
+  (cond-> state
+    (#{:paused :menu} game-state)
+    (do ;(println event)
+      (nav/handle-nav state event))))
 
 (defn key-pressed [state event]
   ;(println event)
@@ -154,6 +164,8 @@
     :mouse-pressed mouse-pressed
     :mouse-released mouse-released
     :mouse-dragged mouse-dragged
+    :mouse-moved mouse-moved
+    :mouse-clicked mouse-clicked
     :key-pressed key-pressed
     :on-close on-close
     :features [:keep-on-top #_:exit-on-close]

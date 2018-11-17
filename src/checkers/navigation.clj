@@ -16,6 +16,10 @@
 (defn selected-item? [state item-id]
   (= item-id (get-in state [:current-menu :selected-item])))
 
+(defn enter-menu? [{:keys [key-code button] :as event}]
+  (or (#{right-key enter-key} key-code)
+      (= :left button)))
+
 (def back-text "⬅Back")
 
 (declare settings-menu multiplayer-menu pause-menu board-menu) ;;todo use lookup
@@ -40,11 +44,11 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Quit" (selected-item? state :quit)))
               :action (fn [_ _] (System/exit 0))}}
-     :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
+     :action (fn [{:keys [current-menu] :as state} event]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
-                 (if (#{right-key enter-key} key-code)
-                   (item-action-fn state event)
-                   state)))
+                 (cond-> state
+                   (enter-menu? event)
+                   (item-action-fn event))))
      :selected-item (first display-order)}))
 
 (def settings-menu
@@ -55,9 +59,9 @@
               (fn [state x y]
                 (draw/draw-menu-item x y back-text (selected-item? state :back)))
               :action
-              (fn [state {:keys [key-code] :as event}]
+              (fn [state event]
                 (cond-> state
-                  (#{enter-key left-key} key-code)
+                  (enter-menu? event)
                   (assoc :current-menu
                          (assoc
                            (if (= :paused (:game-state state))
@@ -91,10 +95,10 @@
              :board
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Board" (selected-item? state :board)))
-              :action (fn [state {:keys [key-code]}]
-                        (if (#{enter-key right-key} key-code)
-                          (assoc state :current-menu board-menu)
-                          state))}}
+              :action (fn [state event]
+                        (cond-> state
+                          (enter-menu? event)
+                          (assoc :current-menu board-menu)))}}
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
                  (item-action-fn state event)))
@@ -108,17 +112,17 @@
               (fn [state x y]
                 (draw/draw-menu-item x y back-text (selected-item? state :back)))
               :action
-              (fn [state {:keys [key-code]}]
+              (fn [state event]
                 (cond-> state
-                  (#{enter-key left-key} key-code)
+                  (enter-menu? event)
                   (assoc :current-menu (assoc settings-menu :selected-item :board))))}
              :dark-piece
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Dark:" (selected-item? state :dark-piece))
                       (draw/draw-static-piece (+ x (q/text-width "Dark: ")) (- y 10) (:dark-color state)))
-              :action (fn [state {:keys [key-code]}]
+              :action (fn [state {:keys [key-code] :as event}]
                         (cond-> state
-                          (#{left-key right-key} key-code)
+                          (enter-menu? event)
                           (update :dark-color
                                   (if (= key-code left-key)
                                     get-previous-item
@@ -128,9 +132,9 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Light:" (selected-item? state :light-piece))
                       (draw/draw-static-piece (+ x (q/text-width "Light: ")) (- y 10) (:light-color state)))
-              :action (fn [state {:keys [key-code]}]
+              :action (fn [state {:keys [key-code] :as event}]
                         (cond-> state
-                          (#{left-key right-key} key-code)
+                          (enter-menu? event)
                           (update :light-color
                                   (if (= key-code left-key)
                                     get-previous-item
@@ -140,9 +144,9 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Dark:" (selected-item? state :dark-square))
                       (draw/draw-square (+ x (q/text-width "Dark:")) (- y (- SQUARE_WIDTH 15)) (:dark-square-color state)))
-              :action (fn [state {:keys [key-code]}]
+              :action (fn [state {:keys [key-code] :as event}]
                         (cond-> state
-                          (#{left-key right-key} key-code)
+                          (enter-menu? event)
                           (update :dark-square-color
                                   (if (= key-code left-key)
                                     get-previous-item
@@ -153,9 +157,9 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Light:" (selected-item? state :light-square))
                       (draw/draw-square (+ x (q/text-width "Light:")) (- y (- SQUARE_WIDTH 15)) (:light-square-color state)))
-              :action (fn [state {:keys [key-code]}]
+              :action (fn [state {:keys [key-code] :as event}]
                         (cond-> state
-                          (#{left-key right-key} key-code)
+                          (enter-menu? event)
                           (update :light-square-color
                                   (if (= key-code left-key)
                                     get-previous-item
@@ -174,9 +178,9 @@
               (fn [state x y]
                 (draw/draw-menu-item x y back-text (selected-item? state :back)))
               :action
-              (fn [state {:keys [key-code] :as event}]
+              (fn [state event]
                 (cond-> state
-                  (#{enter-key left-key} key-code)
+                  (enter-menu? event)
                   (assoc :current-menu (assoc multiplayer-menu :selected-item :host-game))))}
              :your-ip
              {:draw
@@ -205,9 +209,9 @@
               (fn [state x y]
                 (draw/draw-menu-item x y back-text (selected-item? state :back)))
               :action
-              (fn [state {:keys [key-code] :as event}]
+              (fn [state event]
                 (cond-> state
-                  (#{enter-key left-key} key-code)
+                  (enter-menu? event)
                   (assoc :current-menu (assoc multiplayer-menu :selected-item :join-game))))}
              :ip
              {:draw
@@ -217,8 +221,10 @@
               :action
               (fn [state {:keys [key key-code] :as event}]
                 (cond-> state
-                  (= backspace-key key-code) (update :ip (fn [ip] (cond-> ip (< 0 (count ip)) (subs 0 (dec (count ip))))))
-                  :else (update :ip (fn [ip k] (re-find #"[0-9\.]{0,15}" (str ip k))) (name key))))}
+                  key-code
+                  (cond->
+                    (= backspace-key key-code) (update :ip (fn [ip] (cond-> ip (< 0 (count ip)) (subs 0 (dec (count ip))))))
+                    :else (update :ip (fn [ip k] (re-find #"[0-9\.]{0,15}" (str ip k))) (name key)))))}
              :port
              {:draw
               (fn [state x y]
@@ -244,18 +250,24 @@
               (fn [state x y]
                 (draw/draw-menu-item x y back-text (selected-item? state :back)))
               :action
-              (fn [state {:keys [key-code] :as event}]
+              (fn [state event]
                 (cond-> state
-                  (#{enter-key left-key} key-code)
+                  (enter-menu? event)
                   (assoc :current-menu (assoc main-menu :selected-item :multiplayer))))}
              :host-game
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Host Game" (selected-item? state :host-game)))
-              :action (fn [state _] (assoc state :current-menu host-game-menu))}
+              :action (fn [state event]
+                        (cond-> state
+                          (enter-menu? event)
+                          (assoc :current-menu host-game-menu)))}
              :join-game
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Join Game" (selected-item? state :join-game)))
-              :action (fn [state _] (assoc state :current-menu join-game-menu))}}
+              :action (fn [state event]
+                        (cond-> state
+                          (enter-menu? event)
+                          (assoc :current-menu join-game-menu)))}}
      :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
                  (item-action-fn state event)))
@@ -278,11 +290,11 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Quit" (selected-item? state :quit)))
               :action (fn [_ _] (System/exit 0))}}
-     :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
+     :action (fn [{:keys [current-menu] :as state} event]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
-                 (if (= enter-key key-code)
-                   (item-action-fn state event)
-                   state)))
+                 (cond-> state
+                   (enter-menu? event)
+                   (item-action-fn event))))
      :selected-item (first display-order)}))
 
 (def play-again-menu
@@ -299,11 +311,11 @@
                       (draw/draw-menu-item x y "No" (selected-item? state :no)))
               :action (fn [state _]
                         (merge state default-game-state {:current-menu main-menu}))}}
-     :action (fn [{:keys [current-menu] :as state} {:keys [key-code] :as event}]
+     :action (fn [{:keys [current-menu] :as state} event]
                (let [item-action-fn (get-in current-menu [:items (:selected-item current-menu) :action] default-action)]
-                 (if (= enter-key key-code)
-                   (item-action-fn state event)
-                   state)))
+                 (cond-> state
+                   (enter-menu? event)
+                   (item-action-fn event))))
      :selected-item (first display-order)}))
 
 (def player-disconnected-menu
@@ -313,15 +325,22 @@
              {:draw (fn [state x y]
                       (draw/draw-menu-item x y "Player\ndisconnected." false)
                       (draw/draw-menu-item (+ 20 x) (+ y 200) "Ok" (selected-item? state :ok)))}}
-     :action (fn [state {:keys [key-code]}]
-               (when (= enter-key key-code)
-                 (merge state default-game-state {:game-state :menu :current-menu main-menu})))
+     :action (fn [state event]
+               (if (enter-menu? event)
+                 (merge default-game-state {:game-state :menu :current-menu main-menu})
+                 state))
      :selected-item (first display-order)}))
 
 (def menu-kw->menu
   {:main-menu main-menu
    :player-disconnected-menu player-disconnected-menu
    })
+
+(defn update-selected-item [{:keys [current-menu] :as state} {:keys [y] :as event}]
+  (let [menus-count (count (:display-order current-menu))
+        item-heights (/ 400 menus-count)
+        selected-item-idx (-> (quot (- y 40) item-heights) (max 0) (min (dec menus-count)))]
+    (assoc-in state [:current-menu :selected-item] (nth (:display-order current-menu) selected-item-idx))))
 
 (defn handle-nav [{:keys [current-menu new-menu] :as state} event]
   (let [state (if new-menu
