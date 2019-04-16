@@ -1,7 +1,8 @@
 (ns checkers.draw
   (:require [quil.core :as q]
             [checkers.utils :refer :all]
-            [checkers.logic :as logic]))
+            [checkers.logic :as logic]
+            [clojure.string :as string]))
 
 (def menu-text-size 40)
 
@@ -26,31 +27,29 @@
         (q/text (str "Your turn") 150 20)
         (q/text (str "Waiting for opponent to move") 150 20)))
     :waiting-for-opponent
-    (q/text "Waiting for opponent to connect" (/ SCREEN_SIZE 4) 20)
+    (q/text "Waiting for opponent to connect" (/ SCREEN_SIZE_WIDTH 4) 20)
     :red-wins
-    (q/text "Red wins!" (/ SCREEN_SIZE 2) 20)
+    (q/text "Red wins!" (/ SCREEN_SIZE_WIDTH 2) 20)
     :black-wins
-    (q/text "Black wins!" (/ SCREEN_SIZE 2) 20)
+    (q/text "Black wins!" (/ SCREEN_SIZE_WIDTH 2) 20)
     :tied
-    (q/text "Game tied." (/ SCREEN_SIZE 2) 20)
-    nil #_(q/text (name (:game-state state)) (/ SCREEN_SIZE 2) 20))
+    (q/text "Game tied." (/ SCREEN_SIZE_WIDTH 2) 20)
+    nil #_(q/text (name (:game-state state)) (/ SCREEN_SIZE_WIDTH 2) 20))
 
   (q/text (str "Time elapsed: " (let [total-seconds (:total-seconds state)
                                       minutes (int (/ total-seconds 60))
                                       seconds (int (mod total-seconds 60))]
                                   (format "%02d:%02d" minutes seconds)))
-          10 (- SCREEN_SIZE 25))
+          10 (- SCREEN_SIZE_HEIGHT 25))
 
   (when-not (zero? (:timer state))
     (q/text (str "Turn timer: " (- TURN_TIMER_LIMIT (:last-turn-seconds state)))
-            (/ SCREEN_SIZE 2) (- SCREEN_SIZE 25)))
+            (/ SCREEN_SIZE_WIDTH 2) (- SCREEN_SIZE_HEIGHT 25)))
 
-  (q/text-size 10)
-  (q/text "Hotkeys: p - pause game, q - quit to main menu" 10 (- SCREEN_SIZE 10))
 
   (when (:hosting? state)
     (q/text-size 15)
-    (q/text (str "Hosting:" your-ip) (/ SCREEN_SIZE 1.6) (- SCREEN_SIZE 10)))
+    (q/text (str "Hosting:" your-ip) (/ SCREEN_SIZE_WIDTH 1.6) (- SCREEN_SIZE_HEIGHT 10)))
 
   (q/text-size 30))
 
@@ -86,7 +85,8 @@
 
 (defn draw-board! [{:keys [dark-square-color light-square-color player] :as state}]
   (q/background 255)
-  (q/stroke 0)
+  (q/stroke (get-quil-color :black))
+  (q/fill (get-quil-color :black))
 
   (let [text-size 20]
     (q/text-size text-size)
@@ -123,6 +123,47 @@
                              (:light-color state))
                        (#{BLACK_KING RED_KING} piece))))
 
+(defn draw-button! [text x y width height selected?]
+  (q/fill
+    (if selected?
+      (get-quil-color :yellow)
+      (get-quil-color :white)))
+  (q/rect x y width height 5)
+  (q/fill (get-quil-color :black))
+  (q/text text (+ 5 x) (+ y 22)))
+
+(def ^:private get-button-specs
+  (memoize
+    (fn []
+      (loop [[text & r] ["Resign" "Draw" "Pause" "Quit"]
+             x BOARD_SIZE
+             specs []]
+        (if text
+          (let [margin 5
+                y (- BOARD_SIZE 40)
+                width (+ (* 2 margin) (q/text-width text))
+                height (+ (* 2 margin) 20)]
+            (recur r (+ x (q/text-width text) 20)
+                   (conj specs {:text text :x x :y y :width width :height height})))
+          specs)))))
+
+(defn ^:private within-button? [mx my x y width height]
+  (and (> (+ x width) mx x) (< y my (+ y height))))
+
+(defn selected-button [{mx :x my :y}]
+  (loop [[{:keys [text x y width height]} & r] (get-button-specs)]
+    (when text
+      (if (within-button? mx my x y width height)
+        (keyword (string/lower-case text))
+        (recur r)))))
+
+(defn draw-game-buttons! [state]
+  (q/text-size 16)
+  (loop [[{:keys [text x y width height]} & r] (get-button-specs)]
+    (when text
+      (let [selected? (within-button? (q/mouse-x) (q/mouse-y) x y width height)]
+        (draw-button! text x y width height selected?)
+        (recur r)))))
 
 (defn draw-menu-item [x y text selected?]
   (q/fill (get-quil-color :black))
@@ -131,7 +172,7 @@
   (q/text text x y))
 
 (defn menu [{:keys [background-img current-menu] :as state}]
-  (q/image background-img 0 0 SCREEN_SIZE SCREEN_SIZE) ;;todo rotate background or something cool
+  (q/image background-img 0 0 SCREEN_SIZE_WIDTH SCREEN_SIZE_HEIGHT) ;;todo rotate background or something cool
   (q/text-size menu-text-size)
   (q/fill (get-quil-color :white))
   (q/rect 50 40 375 410)
@@ -146,4 +187,5 @@
     (draw-board!)
     (static-pieces!)
     (draw-selected-peice!)
-    (game-text!)))
+    (game-text!)
+    (draw-game-buttons!)))

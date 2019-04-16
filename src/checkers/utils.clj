@@ -1,10 +1,13 @@
 (ns checkers.utils
+  (:require [quil.core :as q])
   (:import (java.net InetAddress)))
 
 ;todo don't upper case _ constants, just regular cabab case
-(def SCREEN_SIZE 500)
 (def MARGIN 50)
-(def BOARD_WIDTH (- SCREEN_SIZE (* 2 MARGIN)))
+(def SCREEN_SIZE_HEIGHT 550)
+(def SCREEN_SIZE_WIDTH 500)
+(def BOARD_SIZE (- SCREEN_SIZE_HEIGHT (* 2 MARGIN)))
+(def BOARD_WIDTH (- BOARD_SIZE (* 2 MARGIN)))
 (def ^:dynamic SQUARE_WIDTH (/ BOARD_WIDTH 8))
 (def PIECE_WIDTH (* 0.75 SQUARE_WIDTH))
 

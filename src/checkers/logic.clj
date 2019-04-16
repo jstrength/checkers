@@ -158,6 +158,6 @@
   (println "reset game")
   (-> state
       (merge default-game-state)
-      (assoc :set-menu :main-menu)))
+      (assoc :new-menu :main-menu)))
 
 (defmethod perform-action :default [state _] state)

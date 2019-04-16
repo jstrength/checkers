@@ -339,7 +339,7 @@
 (defn update-selected-item [{:keys [current-menu] :as state} {:keys [y] :as event}]
   (let [menus-count (count (:display-order current-menu))
         item-heights (/ 400 menus-count)
-        selected-item-idx (-> (quot (- y 40) item-heights) (max 0) (min (dec menus-count)))]
+        selected-item-idx (q/constrain (quot (- y 40) item-heights) 0 (min (dec menus-count)))]
     (assoc-in state [:current-menu :selected-item] (nth (:display-order current-menu) selected-item-idx))))
 
 (defn handle-nav [{:keys [current-menu new-menu] :as state} event]

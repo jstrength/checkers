@@ -33,8 +33,8 @@
 
 (defn mouse-pressed [{:keys [game-state turn board jumping-piece] :as state} {:keys [x y] :as event}]
   (if (and (= game-state :in-progress)
-           (> (- SCREEN_SIZE MARGIN) x MARGIN)
-           (> (- SCREEN_SIZE MARGIN) y MARGIN))
+           (> (- BOARD_SIZE MARGIN) x MARGIN)
+           (> (- BOARD_SIZE MARGIN) y MARGIN))
     (let [square (+ (quot (- x MARGIN) SQUARE_WIDTH)
                     (* 8 (quot (- y MARGIN) SQUARE_WIDTH)))]
       ;(println (is-playable-piece? state square))
@@ -74,17 +74,38 @@
     (update state :selected assoc :x x :y y)
     state))
 
-(defn mouse-moved [{:keys [game-state] :as state} {:keys [x y] :as event}]
+(defn mouse-moved [{:keys [game-state] :as state} event]
   (cond-> state
     (#{:paused :menu} game-state)
-    (do ;(println event)
-        (nav/update-selected-item state event))))
+    (nav/update-selected-item event)))
 
-(defn mouse-clicked [{:keys [game-state] :as state} {:keys [x y] :as event}]
-  (cond-> state
+(defn pause-game [state]
+  (assoc state :game-state :paused
+               :current-menu nav/pause-menu))
+
+(defn quit-game [state]
+  (when (:multiplayer state)
+    (server/write-msg ::server/quit))
+  (-> state
+      (merge default-game-state)
+      (assoc :game-state :menu
+             :current-menu nav/main-menu)))
+
+(defn mouse-clicked [{:keys [game-state] :as state} event]
+  (cond
     (#{:paused :menu} game-state)
-    (do ;(println event)
-      (nav/handle-nav state event))))
+    (nav/handle-nav state event)
+
+    (and (= :in-progress game-state) (draw/selected-button event))
+    (case (draw/selected-button event)
+      :resign state
+      :draw state
+      :pause (pause-game state)
+      :quit (quit-game state)
+      state)
+
+    :else
+    state))
 
 (defn key-pressed [state event]
   ;(println event)
@@ -95,11 +116,8 @@
 
     (= :in-progress (:game-state state))
     (case (:key event)
-      :p (assoc state :game-state :paused
-                      :current-menu nav/pause-menu)
-      :q (do (when (:multiplayer state)
-               (server/write-msg ::server/quit))
-             (update state :actions conj [:reset-game]))
+      :p (pause-game state)
+      :q (quit-game state)
       state)
 
     :else
@@ -149,13 +167,13 @@
 
 (defn draw-state [state]
   (if (#{:paused :menu} (:game-state state))
-    (doto state (draw/menu))
-    (doto state (draw/game))))
+    (draw/menu state)
+    (draw/game state)))
 
 (defn -main [& args]
   (q/defsketch checkers-quil
     :title "Checkers"
-    :size [SCREEN_SIZE SCREEN_SIZE]
+    :size [SCREEN_SIZE_WIDTH SCREEN_SIZE_HEIGHT]
     ; setup function called only once, during sketch initialization.
     :setup (partial setup args)
     ; update-state is called on each iteration before draw-state.
