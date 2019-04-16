@@ -40,3 +40,6 @@ jobs:
 
       # run tests!
       - run: lein test
+
+      # build jar
+      - run: lein uberjar
