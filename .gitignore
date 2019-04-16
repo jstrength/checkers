@@ -10,3 +10,4 @@ pom.xml.asc
 .idea/
 *.iml
 .com.apple*
+.DS_Store
